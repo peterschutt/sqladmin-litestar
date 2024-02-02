@@ -84,7 +84,7 @@ class BaseAdmin:
         self.templates_dir = templates_dir
         self.title = title
         self.logo_url = logo_url
-        self.router = Router("admin", route_handlers=[])
+        self.router = Router(self.base_url, route_handlers=[])
 
         if session_maker:
             self.session_maker = session_maker
