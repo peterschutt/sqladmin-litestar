@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, List, Optional, Union
 
-from starlette.datastructures import URL
-from starlette.requests import Request
+from litestar import Request
+from litestar.datastructures import URL
 
 if TYPE_CHECKING:
     from sqladmin.application import BaseView, ModelView

@@ -18,15 +18,15 @@ from typing import (
 from urllib.parse import urlencode
 
 import anyio
+from litestar import Request
+from litestar.datastructures import URL
+from litestar.response import Stream
 from sqlalchemy import Column, String, asc, cast, desc, func, inspect, or_
 from sqlalchemy.exc import NoInspectionAvailable
 from sqlalchemy.orm import joinedload, sessionmaker
 from sqlalchemy.orm.exc import DetachedInstanceError
 from sqlalchemy.sql.elements import ClauseElement
 from sqlalchemy.sql.expression import Select, select
-from starlette.datastructures import URL
-from starlette.requests import Request
-from starlette.responses import StreamingResponse
 from wtforms import Field, Form
 
 from sqladmin._queries import Query
@@ -711,16 +711,16 @@ class ModelView(BaseView, metaclass=ModelViewMeta):
         )
         return str(url) + "?" + query_params
 
-    def _url_for_details_with_prop(self, request: Request, obj: Any, prop: str) -> URL:
+    def _url_for_details_with_prop(self, request: Request, obj: Any, prop: str) -> str:
         target = getattr(obj, prop, None)
         if target is None:
-            return URL()
+            return URL("")._url
         return self._build_url_for("admin:details", request, target)
 
     def _url_for_action(self, request: Request, action_name: str) -> str:
         return str(request.url_for(f"admin:action-{self.identity}-{action_name}"))
 
-    def _build_url_for(self, name: str, request: Request, obj: Any) -> URL:
+    def _build_url_for(self, name: str, request: Request, obj: Any) -> str:
         return request.url_for(
             name,
             identity=slugify_class_name(obj.__class__.__name__),
@@ -1096,7 +1096,7 @@ class ModelView(BaseView, metaclass=ModelViewMeta):
         self,
         data: List[Any],
         export_type: str = "csv",
-    ) -> StreamingResponse:
+    ) -> Stream:
         if export_type == "csv":
             return await self._export_csv(data)
         raise NotImplementedError("Only export_type='csv' is implemented.")
@@ -1104,7 +1104,7 @@ class ModelView(BaseView, metaclass=ModelViewMeta):
     async def _export_csv(
         self,
         data: List[Any],
-    ) -> StreamingResponse:
+    ) -> Stream:
         async def generate(writer: Writer) -> AsyncGenerator[Any, None]:
             # Append the column titles at the beginning
             yield writer.writerow(self._export_prop_names)
@@ -1120,7 +1120,7 @@ class ModelView(BaseView, metaclass=ModelViewMeta):
         # So we want to keep the filename secure outside that method.
         filename = secure_filename(self.get_export_name(export_type="csv"))
 
-        return StreamingResponse(
+        return Stream(
             content=stream_to_csv(generate),
             media_type="text/csv",
             headers={"Content-Disposition": f"attachment;filename={filename}"},

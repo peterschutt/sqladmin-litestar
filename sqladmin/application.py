@@ -1,11 +1,9 @@
 import inspect
-import io
 import logging
 from types import MethodType
 from typing import (
     TYPE_CHECKING,
     Any,
-    Awaitable,
     Callable,
     List,
     Optional,
@@ -19,17 +17,23 @@ from typing import (
 from urllib.parse import urljoin
 
 from jinja2 import ChoiceLoader, FileSystemLoader, PackageLoader
+from litestar import (
+    Litestar,
+    MediaType,
+    Request,
+    Router,
+    asgi,
+    get,
+)
+from litestar.datastructures import FormMultiDict, UploadFile
+from litestar.exceptions import HTTPException
+from litestar.handlers import HTTPRouteHandler
+from litestar.middleware import DefineMiddleware
+from litestar.response import Redirect, Response
+from litestar.static_files import StaticFilesConfig
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, sessionmaker
-from starlette.applications import Starlette
-from starlette.datastructures import URL, FormData, UploadFile
-from starlette.exceptions import HTTPException
-from starlette.middleware import Middleware
-from starlette.requests import Request
-from starlette.responses import JSONResponse, RedirectResponse, Response
-from starlette.routing import Mount, Route
-from starlette.staticfiles import StaticFiles
 
 from sqladmin._menu import CategoryMenu, Menu, ViewMenu
 from sqladmin._types import ENGINE_TYPE
@@ -65,14 +69,14 @@ class BaseAdmin:
 
     def __init__(
         self,
-        app: Starlette,
+        app: Litestar,
         engine: Optional[ENGINE_TYPE] = None,
         session_maker: Optional[sessionmaker] = None,
         base_url: str = "/admin",
         title: str = "Admin",
         logo_url: Optional[str] = None,
         templates_dir: str = "templates",
-        middlewares: Optional[Sequence[Middleware]] = None,
+        middlewares: Optional[Sequence[DefineMiddleware]] = None,
         authentication_backend: Optional[AuthenticationBackend] = None,
     ) -> None:
         self.app = app
@@ -81,6 +85,7 @@ class BaseAdmin:
         self.templates_dir = templates_dir
         self.title = title
         self.logo_url = logo_url
+        self.router = Router("admin", route_handlers=[])
 
         if session_maker:
             self.session_maker = session_maker
@@ -98,8 +103,20 @@ class BaseAdmin:
             middlewares = list(middlewares)
             middlewares.extend(authentication_backend.middlewares)
 
-        self.admin = Starlette(middleware=middlewares)
         self.templates = self.init_templating_engine()
+
+        self.admin = Litestar(
+            middleware=middlewares,
+            route_handlers=[],
+            debug=True,
+            static_files_config=[
+                StaticFilesConfig(
+                    path="sqladmin/statics",
+                    name="admin:statics",
+                    directories=["sqladmin/statics"],
+                )
+            ],
+        )
         self._views: List[Union[BaseView, ModelView]] = []
         self._menu = Menu()
 
@@ -169,12 +186,14 @@ class BaseAdmin:
     ) -> None:
         if hasattr(func, "_action"):
             view_instance = cast(ModelView, view_instance)
-            self.admin.add_route(
-                route=func,
-                path=f"/{view_instance.identity}/action/" + getattr(func, "_slug"),
-                methods=["GET"],
-                name=f"action-{view_instance.identity}-{getattr(func, '_slug')}",
-                include_in_schema=getattr(func, "_include_in_schema"),
+            self.router.register(
+                HTTPRouteHandler(
+                    f"/{view_instance.identity}/action/" + getattr(func, "_slug"),
+                    endpoint=func,
+                    name=f"action-{view_instance.identity}-{getattr(func, '_slug')}",
+                    http_method="GET",
+                    include_in_schema=getattr(func, "_include_in_schema"),
+                )
             )
 
             if getattr(func, "_add_in_list"):
@@ -198,12 +217,14 @@ class BaseAdmin:
         view_instance: Union[BaseView, ModelView],
     ) -> None:
         if hasattr(func, "_exposed"):
-            self.admin.add_route(
-                route=func,
-                path=getattr(func, "_path"),
-                methods=getattr(func, "_methods"),
-                name=getattr(func, "_identity"),
-                include_in_schema=getattr(func, "_include_in_schema"),
+            self.router.register(
+                HTTPRouteHandler(
+                    getattr(func, "_path"),
+                    endpoint=func,
+                    name=getattr(func, "_identity"),
+                    http_method=getattr(func, "_methods"),
+                    include_in_schema=getattr(func, "_include_in_schema"),
+                )
             )
 
             view.identity = getattr(func, "_identity")
@@ -228,7 +249,6 @@ class BaseAdmin:
         view.ajax_lookup_url = urljoin(
             self.base_url + "/", f"{view.identity}/ajax/lookup"
         )
-        view.templates = self.templates
         view_instance = view()
 
         self._find_decorated_funcs(
@@ -250,13 +270,12 @@ class BaseAdmin:
 
                 @expose("/custom", methods=["GET"])
                 async def test_page(self, request: Request):
-                    return await self.templates.TemplateResponse(request, "custom.html")
+                    return Template("custom.html")
 
             admin.add_base_view(CustomAdmin)
             ```
         """
 
-        view.templates = self.templates
         view_instance = view()
 
         self._find_decorated_funcs(
@@ -337,20 +356,20 @@ class Admin(BaseAdminView):
 
     def __init__(
         self,
-        app: Starlette,
+        app: Litestar,
         engine: Optional[ENGINE_TYPE] = None,
         session_maker: Optional[Union[sessionmaker, "async_sessionmaker"]] = None,
         base_url: str = "/admin",
         title: str = "Admin",
         logo_url: Optional[str] = None,
-        middlewares: Optional[Sequence[Middleware]] = None,
+        middlewares: Optional[Sequence[DefineMiddleware]] = None,
         debug: bool = False,
         templates_dir: str = "templates",
         authentication_backend: Optional[AuthenticationBackend] = None,
     ) -> None:
         """
         Args:
-            app: Starlette or FastAPI application.
+            app: Litestar application.
             engine: SQLAlchemy engine instance.
             session_maker: SQLAlchemy sessionmaker instance.
             base_url: Base URL for Admin interface.
@@ -370,82 +389,103 @@ class Admin(BaseAdminView):
             authentication_backend=authentication_backend,
         )
 
-        statics = StaticFiles(packages=["sqladmin"])
-
-        async def http_exception(
-            request: Request, exc: Exception
-        ) -> Union[Response, Awaitable[Response]]:
+        async def http_exception(request: Request, exc: Exception) -> Response:
             assert isinstance(exc, HTTPException)
             context = {
                 "status_code": exc.status_code,
                 "message": exc.detail,
             }
             return await self.templates.TemplateResponse(
-                request, "error.html", context, status_code=exc.status_code
+                name="error.html",
+                request=request,
+                context=context,
+                status_code=exc.status_code,
             )
 
-        routes = [
-            Mount("/statics", app=statics, name="statics"),
-            Route("/", endpoint=self.index, name="index"),
-            Route("/{identity}/list", endpoint=self.list, name="list"),
-            Route(
-                "/{identity}/details/{pk:path}", endpoint=self.details, name="details"
-            ),
-            Route(
-                "/{identity}/delete",
-                endpoint=self.delete,
-                name="delete",
-                methods=["DELETE"],
-            ),
-            Route(
-                "/{identity}/create",
-                endpoint=self.create,
-                name="create",
-                methods=["GET", "POST"],
-            ),
-            Route(
-                "/{identity}/edit/{pk:path}",
-                endpoint=self.edit,
-                name="edit",
-                methods=["GET", "POST"],
-            ),
-            Route(
-                "/{identity}/export/{export_type}", endpoint=self.export, name="export"
-            ),
-            Route(
-                "/{identity}/ajax/lookup", endpoint=self.ajax_lookup, name="ajax_lookup"
-            ),
-            Route("/login", endpoint=self.login, name="login", methods=["GET", "POST"]),
-            Route("/logout", endpoint=self.logout, name="logout", methods=["GET"]),
+        route_handlers = [
+            HTTPRouteHandler("/", name="admin:index", http_method="GET")(self.index),
+            HTTPRouteHandler(
+                "/{identity:str}/list",
+                name="admin:list",
+                media_type=MediaType.HTML,
+                http_method="GET",
+            )(self.list),
+            HTTPRouteHandler(
+                "/{identity:str}/details/{pk:int}",
+                name="admin:details",
+                http_method="GET",
+            )(self.details),
+            HTTPRouteHandler(
+                "/{identity:str}/delete",
+                name="admin:delete",
+                status_code=200,
+                media_type="text/plain",
+                http_method="DELETE",
+            )(self.delete),
+            HTTPRouteHandler(
+                "/{identity:str}/create",
+                name="admin:create",
+                http_method=["GET", "POST"],
+            )(self.create),
+            HTTPRouteHandler(
+                "/{identity:str}/edit/{pk:int}",
+                name="admin:edit",
+                http_method=["GET", "POST"],
+            )(self.edit),
+            HTTPRouteHandler(
+                "/{identity:str}/export/{export_type:str}",
+                name="admin:export",
+                http_method="GET",
+            )(self.export),
+            HTTPRouteHandler(
+                "/{identity:str}/ajax/lookup",
+                name="admin:ajax_lookup",
+                http_method="GET",
+            )(self.ajax_lookup),
+            HTTPRouteHandler(
+                "/login",
+                name="admin:login",
+                http_method=["GET", "POST"],
+            )(self.login),
+            HTTPRouteHandler(
+                "/logout",
+                name="admin:logout",
+                http_method="GET",
+            )(self.logout),
         ]
 
-        self.admin.router.routes = routes
-        self.admin.exception_handlers = {HTTPException: http_exception}
-        self.admin.debug = debug
-        self.app.mount(base_url, app=self.admin, name="admin")
+        for route_handler in route_handlers:
+            self.router.register(route_handler)
 
-    @login_required
+        self.admin.register(self.router)
+
+        self.admin.debug = debug
+        self.app.register(
+            asgi(name="Admin", is_mount=True)(self.admin),
+        )
+
+    # @login_required
     async def index(self, request: Request) -> Response:
         """Index route which can be overridden to create dashboards."""
 
-        return await self.templates.TemplateResponse(request, "index.html")
+        return await self.templates.TemplateResponse(request=request, name="index.html")
 
-    @login_required
+    # @login_required
     async def list(self, request: Request) -> Response:
         """List route to display paginated Model instances."""
 
         await self._list(request)
 
-        model_view = self._find_model_view(request.path_params["identity"])
+        model_view: ModelView = self._find_model_view(request.path_params["identity"])
         pagination = await model_view.list(request)
         pagination.add_pagination_urls(request.url)
 
         context = {"model_view": model_view, "pagination": pagination}
         return await self.templates.TemplateResponse(
-            request, model_view.list_template, context
+            name=model_view.list_template, request=request, context=context
         )
 
-    @login_required
+    # @login_required
     async def details(self, request: Request) -> Response:
         """Details route."""
 
@@ -464,10 +504,10 @@ class Admin(BaseAdminView):
         }
 
         return await self.templates.TemplateResponse(
-            request, model_view.details_template, context
+            name=model_view.details_template, request=request, context=context
         )
 
-    @login_required
+    # @login_required
     async def delete(self, request: Request) -> Response:
         """Delete route."""
 
@@ -487,7 +527,7 @@ class Admin(BaseAdminView):
 
         return Response(content=str(request.url_for("admin:list", identity=identity)))
 
-    @login_required
+    # @login_required
     async def create(self, request: Request) -> Response:
         """Create model endpoint."""
 
@@ -507,12 +547,15 @@ class Admin(BaseAdminView):
 
         if request.method == "GET":
             return await self.templates.TemplateResponse(
-                request, model_view.create_template, context
+                name=model_view.create_template, request=request, context=context
             )
 
         if not form.validate():
             return await self.templates.TemplateResponse(
-                request, model_view.create_template, context, status_code=400
+                name=model_view.create_template,
+                request=request,
+                context=context,
+                status_code=400,
             )
 
         form_data_dict = self._denormalize_wtform_data(form.data, model_view.model)
@@ -522,7 +565,10 @@ class Admin(BaseAdminView):
             logger.exception(e)
             context["error"] = str(e)
             return await self.templates.TemplateResponse(
-                request, model_view.create_template, context, status_code=400
+                name=model_view.create_template,
+                request=request,
+                context=context,
+                status_code=400,
             )
 
         url = self.get_save_redirect_url(
@@ -531,9 +577,9 @@ class Admin(BaseAdminView):
             obj=obj,
             model_view=model_view,
         )
-        return RedirectResponse(url=url, status_code=302)
+        return Redirect(url, status_code=302)
 
-    @login_required
+    # @login_required
     async def edit(self, request: Request) -> Response:
         """Edit model endpoint."""
 
@@ -555,7 +601,7 @@ class Admin(BaseAdminView):
 
         if request.method == "GET":
             return await self.templates.TemplateResponse(
-                request, model_view.edit_template, context
+                name=model_view.edit_template, request=request, context=context
             )
 
         form_data = await self._handle_form_data(request, model)
@@ -563,7 +609,10 @@ class Admin(BaseAdminView):
         if not form.validate():
             context["form"] = form
             return await self.templates.TemplateResponse(
-                request, model_view.edit_template, context, status_code=400
+                name=model_view.edit_template,
+                request=request,
+                context=context,
+                status_code=400,
             )
 
         form_data_dict = self._denormalize_wtform_data(form.data, model)
@@ -578,7 +627,10 @@ class Admin(BaseAdminView):
             logger.exception(e)
             context["error"] = str(e)
             return await self.templates.TemplateResponse(
-                request, model_view.edit_template, context, status_code=400
+                name=model_view.edit_template,
+                request=request,
+                context=context,
+                status_code=400,
             )
 
         url = self.get_save_redirect_url(
@@ -587,9 +639,9 @@ class Admin(BaseAdminView):
             obj=obj,
             model_view=model_view,
         )
-        return RedirectResponse(url=url, status_code=302)
+        return Redirect(url, status_code=302)
 
-    @login_required
+    # @login_required
     async def export(self, request: Request) -> Response:
         """Export model endpoint."""
 
@@ -604,27 +656,34 @@ class Admin(BaseAdminView):
         )
         return await model_view.export_data(rows, export_type=export_type)
 
+    @get("/login", name="admin:login")
     async def login(self, request: Request) -> Response:
         assert self.authentication_backend is not None
 
         context = {}
         if request.method == "GET":
-            return await self.templates.TemplateResponse(request, "login.html")
+            return await self.templates.TemplateResponse(
+                name="login.html",
+                request=request,
+            )
 
         ok = await self.authentication_backend.login(request)
         if not ok:
             context["error"] = "Invalid credentials."
             return await self.templates.TemplateResponse(
-                request, "login.html", context, status_code=400
+                name="login.html",
+                request=request,
+                context=context,
+                status_code=400,
             )
 
-        return RedirectResponse(request.url_for("admin:index"), status_code=302)
+        return Redirect(request.url_for("admin:index"), status_code=302)
 
     async def logout(self, request: Request) -> Response:
         assert self.authentication_backend is not None
 
         await self.authentication_backend.logout(request)
-        return RedirectResponse(request.url_for("admin:index"), status_code=302)
+        return Redirect(request.url_for("admin:index"), status_code=302)
 
     async def ajax_lookup(self, request: Request) -> Response:
         """Ajax lookup route."""
@@ -644,11 +703,11 @@ class Admin(BaseAdminView):
             raise HTTPException(status_code=400)
 
         data = [loader.format(m) for m in await loader.get_list(term)]
-        return JSONResponse({"results": data})
+        return Response({"results": data}, media_type=MediaType.JSON)
 
     def get_save_redirect_url(
-        self, request: Request, form: FormData, model_view: ModelView, obj: Any
-    ) -> Union[str, URL]:
+        self, request: Request, form: FormMultiDict, model_view: ModelView, obj: Any
+    ) -> str:
         """
         Get the redirect URL after a save action
         which is triggered from create/edit page.
@@ -665,7 +724,9 @@ class Admin(BaseAdminView):
             return request.url_for("admin:edit", identity=identity, pk=identifier)
         return request.url_for("admin:create", identity=identity)
 
-    async def _handle_form_data(self, request: Request, obj: Any = None) -> FormData:
+    async def _handle_form_data(
+        self, request: Request, obj: Any = None
+    ) -> FormMultiDict:
         """
         Handle form data and modify in case of UploadFile.
         This is needed since in edit page
@@ -683,13 +744,27 @@ class Admin(BaseAdminView):
             empty_upload = len(await value.read(1)) != 1
             await value.seek(0)
             if should_clear:
-                form_data.append((key, UploadFile(io.BytesIO(b""))))
+                form_data.append(
+                    (
+                        key,
+                        UploadFile(content_type="", filename="test"),
+                    )
+                )
             elif empty_upload and obj and getattr(obj, key):
                 f = getattr(obj, key)  # In case of update, imitate UploadFile
-                form_data.append((key, UploadFile(filename=f.name, file=f.open())))
+                form_data.append(
+                    (
+                        key,
+                        UploadFile(
+                            filename=f.name,
+                            file_data=f.open(),
+                            content_type=f.content_type,
+                        ),
+                    )
+                )
             else:
                 form_data.append((key, value))
-        return FormData(form_data)
+        return FormMultiDict(form_data)
 
     def _normalize_wtform_data(self, obj: Any) -> dict:
         form_data = {}

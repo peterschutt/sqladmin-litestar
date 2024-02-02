@@ -164,7 +164,7 @@ def stream_to_csv(
     """Function that takes a callable (that yields from a CSV Writer), and
     provides it a writer that streams the output directly instead of
     storing it in a buffer. The direct output stream is intended to go
-    inside a `starlette.responses.StreamingResponse`.
+    inside a `litestar.response.Stream`.
 
     Loosely adapted from here:
 

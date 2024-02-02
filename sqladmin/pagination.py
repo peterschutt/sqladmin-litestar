@@ -1,7 +1,9 @@
 from dataclasses import dataclass, field
 from typing import Any, List
 
-from starlette.datastructures import URL
+from litestar.datastructures import URL
+
+from sqladmin.utils import include_query_params
 
 
 @dataclass
@@ -69,6 +71,7 @@ class Pagination:
     def _add_page_control(self, base_url: URL, page: int) -> None:
         self.max_page_controls -= 1
 
-        url = str(base_url.include_query_params(page=page))
+        url = str(include_query_params(base_url, page=page))
+
         page_control = PageControl(number=page, url=url)
         self.page_controls.append(page_control)
