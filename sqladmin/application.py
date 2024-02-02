@@ -23,7 +23,6 @@ from litestar import (
     Request,
     Router,
     asgi,
-    get,
 )
 from litestar.datastructures import FormMultiDict, UploadFile
 from litestar.exceptions import HTTPException
@@ -656,7 +655,6 @@ class Admin(BaseAdminView):
         )
         return await model_view.export_data(rows, export_type=export_type)
 
-    @get("/login", name="admin:login")
     async def login(self, request: Request) -> Response:
         assert self.authentication_backend is not None
 
