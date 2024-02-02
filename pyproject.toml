@@ -9,9 +9,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = "BSD-3-Clause"
 keywords = ["sqlalchemy", "fastapi", "starlette", "admin"]
-authors = [
-  { name = "Amin Alaee", email = "me@aminalaee.dev" },
-]
+authors = [{ name = "Amin Alaee", email = "me@aminalaee.dev" }]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Programming Language :: Python",
@@ -27,7 +25,7 @@ classifiers = [
   "Operating System :: OS Independent",
 ]
 dependencies = [
-  "starlette",
+  "litestar",
   "sqlalchemy >=1.4",
   "wtforms >=3.1, <3.2",
   "jinja2",
@@ -36,9 +34,7 @@ dependencies = [
 dynamic = ["version"]
 
 [project.optional-dependencies]
-full = [
-    "itsdangerous",
-]
+full = ["itsdangerous"]
 
 [project.urls]
 Documentation = "https://aminalaee.dev/sqladmin"
@@ -50,14 +46,10 @@ path = "sqladmin/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 [tool.hatch.build.targets.sdist]
-include = [
-    "/sqladmin",
-]
+include = ["/sqladmin"]
 
 [tool.hatch.build]
-exclude = [
-  "tests/*",
-]
+exclude = ["tests/*"]
 
 [tool.hatch.envs.test]
 dependencies = [
@@ -106,15 +98,8 @@ cov = [
 test = "coverage run -a --concurrency=thread,greenlet -m pytest {args}"
 
 [tool.hatch.envs.lint.scripts]
-check = [
-  "ruff .",
-  "ruff format --check .",
-  "mypy sqladmin",
-]
-format = [
-  "ruff format .",
-  "ruff --fix .",
-]
+check = ["ruff .", "ruff format --check .", "mypy sqladmin"]
+format = ["ruff format .", "ruff --fix ."]
 
 [tool.hatch.envs.docs.scripts]
 build = "mkdocs build"
@@ -126,9 +111,15 @@ sqlalchemy = ["1.4", "2.0"]
 
 [tool.hatch.envs.test.overrides]
 matrix.sqlalchemy.dependencies = [
-  { value = "sqlalchemy==1.4.41", if = ["1.4"] },
-  { value = "sqlmodel==0.0.8", if = ["1.4"] },
-  { value = "sqlalchemy==2.0", if = ["2.0"] },
+  { value = "sqlalchemy==1.4.41", if = [
+    "1.4",
+  ] },
+  { value = "sqlmodel==0.0.8", if = [
+    "1.4",
+  ] },
+  { value = "sqlalchemy==2.0", if = [
+    "2.0",
+  ] },
 ]
 
 [tool.mypy]
@@ -140,16 +131,13 @@ show_error_codes = true
 select = ["E", "F", "I"]
 
 [tool.coverage.run]
-source_pkgs = [
-  "sqladmin",
-  "tests",
-]
+source_pkgs = ["sqladmin", "tests"]
 
 [tool.coverage.report]
 exclude_lines = [
-    "pragma: no cover",
-    "pragma: nocover",
-    "except NotImplementedError",
-    "raise NotImplementedError",
-    "if TYPE_CHECKING:",
+  "pragma: no cover",
+  "pragma: nocover",
+  "except NotImplementedError",
+  "raise NotImplementedError",
+  "if TYPE_CHECKING:",
 ]
