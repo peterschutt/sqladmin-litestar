@@ -188,11 +188,10 @@ class BaseAdmin:
             self.router.register(
                 HTTPRouteHandler(
                     f"/{view_instance.identity}/action/" + getattr(func, "_slug"),
-                    endpoint=func,
                     name=f"action-{view_instance.identity}-{getattr(func, '_slug')}",
                     http_method="GET",
                     include_in_schema=getattr(func, "_include_in_schema"),
-                )
+                )(func)
             )
 
             if getattr(func, "_add_in_list"):
@@ -200,14 +199,14 @@ class BaseAdmin:
                     func, "_label"
                 )
             if getattr(func, "_add_in_detail"):
-                view_instance._custom_actions_in_detail[
-                    getattr(func, "_slug")
-                ] = getattr(func, "_label")
+                view_instance._custom_actions_in_detail[getattr(func, "_slug")] = (
+                    getattr(func, "_label")
+                )
 
             if getattr(func, "_confirmation_message"):
-                view_instance._custom_actions_confirmation[
-                    getattr(func, "_slug")
-                ] = getattr(func, "_confirmation_message")
+                view_instance._custom_actions_confirmation[getattr(func, "_slug")] = (
+                    getattr(func, "_confirmation_message")
+                )
 
     def _handle_expose_decorated_func(
         self,
@@ -219,11 +218,10 @@ class BaseAdmin:
             self.router.register(
                 HTTPRouteHandler(
                     getattr(func, "_path"),
-                    endpoint=func,
                     name=getattr(func, "_identity"),
                     http_method=getattr(func, "_methods"),
                     include_in_schema=getattr(func, "_include_in_schema"),
-                )
+                )(func)
             )
 
             view.identity = getattr(func, "_identity")
