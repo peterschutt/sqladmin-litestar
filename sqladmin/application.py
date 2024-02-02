@@ -463,13 +463,13 @@ class Admin(BaseAdminView):
             asgi(name="Admin", is_mount=True)(self.admin),
         )
 
-    # @login_required
+    @login_required
     async def index(self, request: Request) -> Response:
         """Index route which can be overridden to create dashboards."""
 
         return await self.templates.TemplateResponse(request=request, name="index.html")
 
-    # @login_required
+    @login_required
     async def list(self, request: Request) -> Response:
         """List route to display paginated Model instances."""
 
@@ -484,7 +484,7 @@ class Admin(BaseAdminView):
             name=model_view.list_template, request=request, context=context
         )
 
-    # @login_required
+    @login_required
     async def details(self, request: Request) -> Response:
         """Details route."""
 
@@ -506,7 +506,7 @@ class Admin(BaseAdminView):
             name=model_view.details_template, request=request, context=context
         )
 
-    # @login_required
+    @login_required
     async def delete(self, request: Request) -> Response:
         """Delete route."""
 
@@ -526,7 +526,7 @@ class Admin(BaseAdminView):
 
         return Response(content=str(request.url_for("admin:list", identity=identity)))
 
-    # @login_required
+    @login_required
     async def create(self, request: Request) -> Response:
         """Create model endpoint."""
 
@@ -578,7 +578,7 @@ class Admin(BaseAdminView):
         )
         return Redirect(url, status_code=302)
 
-    # @login_required
+    @login_required
     async def edit(self, request: Request) -> Response:
         """Edit model endpoint."""
 
@@ -640,7 +640,7 @@ class Admin(BaseAdminView):
         )
         return Redirect(url, status_code=302)
 
-    # @login_required
+    @login_required
     async def export(self, request: Request) -> Response:
         """Export model endpoint."""
 
