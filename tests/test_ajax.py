@@ -5,7 +5,7 @@ from httpx import AsyncClient
 from sqlalchemy import Column, ForeignKey, Integer, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import declarative_base, relationship, selectinload, sessionmaker
-from starlette.applications import Starlette
+from litestar import Litestar
 
 from sqladmin import Admin, ModelView
 from sqladmin.ajax import create_ajax_loader
@@ -16,7 +16,7 @@ pytestmark = pytest.mark.anyio
 Base = declarative_base()  # type: Any
 session_maker = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
-app = Starlette()
+app = Litestar()
 admin = Admin(app=app, engine=engine)
 
 

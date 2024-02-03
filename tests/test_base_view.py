@@ -2,16 +2,16 @@ from typing import Generator
 
 import pytest
 from sqlalchemy.orm import declarative_base
-from starlette.applications import Starlette
-from starlette.requests import Request
-from starlette.testclient import TestClient
+from litestar import Litestar
+from litestar import Request, Response
+from litestar.testing import TestClient
 
 from sqladmin import Admin, BaseView, expose
 from tests.common import sync_engine as engine
 
 Base = declarative_base()  # type: ignore
 
-app = Starlette()
+app = Litestar()
 admin = Admin(app=app, engine=engine, templates_dir="tests/templates")
 
 
@@ -20,12 +20,12 @@ class CustomAdmin(BaseView):
     icon = "fa fa-test"
 
     @expose("/custom", methods=["GET"])
-    async def custom(self, request: Request):
-        return await self.templates.TemplateResponse(request, "custom.html")
+    async def custom(self, request: Request) -> Response:
+        return self.templates.TemplateResponse(request, "custom.html")
 
     @expose("/custom/report")
-    async def custom_report(self, request: Request):
-        return await self.templates.TemplateResponse(request, "custom.html")
+    async def custom_report(self, request: Request) -> Response:
+        return self.templates.TemplateResponse(request, "custom.html")
 
 
 @pytest.fixture

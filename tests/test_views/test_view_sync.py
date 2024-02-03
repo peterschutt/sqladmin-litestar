@@ -14,9 +14,9 @@ from sqlalchemy import (
     select,
 )
 from sqlalchemy.orm import declarative_base, relationship, selectinload, sessionmaker
-from starlette.applications import Starlette
-from starlette.requests import Request
-from starlette.testclient import TestClient
+from litestar import Litestar
+from litestar import Request
+from litestar.testing import TestClient
 
 from sqladmin import Admin, ModelView
 from tests.common import sync_engine as engine
@@ -24,7 +24,7 @@ from tests.common import sync_engine as engine
 Base = declarative_base()  # type: Any
 session_maker = sessionmaker(bind=engine)
 
-app = Starlette()
+app = Litestar()
 admin = Admin(app=app, engine=engine)
 
 

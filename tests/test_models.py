@@ -7,8 +7,9 @@ from sqlalchemy import Boolean, Column, Enum, ForeignKey, Integer, String, selec
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from sqlalchemy.sql.expression import Select
-from starlette.applications import Starlette
-from starlette.requests import Request
+from litestar import Litestar
+from litestar import Request
+from litestar.testing import RequestFactory
 
 from sqladmin import Admin, ModelView
 from sqladmin.exceptions import InvalidModelError
@@ -20,7 +21,7 @@ pytestmark = pytest.mark.anyio
 Base = declarative_base()  # type: ignore
 session_maker = sessionmaker(bind=engine)
 
-app = Starlette()
+app = Litestar()
 admin = Admin(app=app, session_maker=session_maker)
 
 
@@ -99,10 +100,10 @@ def test_metadata_setup() -> None:
 def test_setup_with_invalid_sqlalchemy_model() -> None:
     with pytest.raises(InvalidModelError) as exc:
 
-        class AddressAdmin(ModelView, model=Starlette):
+        class AddressAdmin(ModelView, model=Litestar):
             pass
 
-    assert exc.match("Class Starlette is not a SQLAlchemy model.")
+    assert exc.match("Class Litestar is not a SQLAlchemy model.")
 
 
 def test_column_list_default() -> None:
@@ -177,8 +178,7 @@ async def test_column_formatters_detail() -> None:
 
 
 async def test_column_formatters_default() -> None:
-    class ProfileAdmin(ModelView, model=Profile):
-        ...
+    class ProfileAdmin(ModelView, model=Profile): ...
 
     user = User(id=1, name="Long Name")
     profile = Profile(user=user, is_active=True)
@@ -341,8 +341,7 @@ def test_get_python_type_postgresql() -> None:
 
 
 def test_model_default_sort() -> None:
-    class UserAdmin(ModelView, model=User):
-        ...
+    class UserAdmin(ModelView, model=User): ...
 
     assert UserAdmin()._get_default_sort() == [("id", False)]
 
@@ -376,7 +375,7 @@ async def test_get_model_objects_uses_list_query() -> None:
             return super().list_query(request).filter(User.name.endswith("man"))
 
     view = UserAdmin()
-    request = Request({"type": "http"})
+    request = RequestFactory().get("/")
 
     assert len(await view.get_model_objects(request)) == 1
 
@@ -418,20 +417,19 @@ async def test_model_property_in_columns() -> None:
 
 
 def test_sort_query() -> None:
-    class AddressAdmin(ModelView, model=Address):
-        ...
+    class AddressAdmin(ModelView, model=Address): ...
 
     query = select(Address)
 
-    request = Request({"type": "http", "query_string": "sortBy=id&sort=asc"})
+    request = RequestFactory().get("/", query_params={"sortBy":"id", "sort":"asc"})
     stmt = AddressAdmin().sort_query(query, request)
     assert "ORDER BY addresses.id ASC" in str(stmt)
 
-    request = Request({"type": "http", "query_string": b"sortBy=user.name&sort=desc"})
+    request = RequestFactory().get("/", query_params={"sortBy":"user.name", "sort":"desc"})
     stmt = AddressAdmin().sort_query(query, request)
     assert "ORDER BY users.name DESC" in str(stmt)
 
-    request = Request({"type": "http", "query_string": b"sortBy=user.profile.role"})
+    request = RequestFactory().get("/", query_params={"sortBy":"user.profile.role", "sort":"asc"})
     stmt = AddressAdmin().sort_query(query, request)
     assert "ORDER BY profiles.role ASC" in str(stmt)
 

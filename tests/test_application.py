@@ -1,12 +1,12 @@
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.orm import declarative_base
-from starlette.applications import Starlette
-from starlette.datastructures import MutableHeaders
-from starlette.middleware import Middleware
-from starlette.requests import Request
-from starlette.responses import Response
-from starlette.testclient import TestClient
-from starlette.types import ASGIApp, Message, Receive, Scope, Send
+from litestar import Litestar, route
+from litestar.datastructures import MutableScopeHeaders as MutableHeaders
+from litestar.middleware import DefineMiddleware as Middleware
+from litestar import Request
+from litestar.response import Response
+from litestar.testing import TestClient
+from litestar.types import ASGIApp, Message, Receive, Scope, Send
 
 from sqladmin import Admin, ModelView
 from tests.common import sync_engine as engine
@@ -28,7 +28,7 @@ class User(Base):
 
 
 def test_application_title() -> None:
-    app = Starlette()
+    app = Litestar()
     Admin(app=app, engine=engine)
 
     with TestClient(app) as client:
@@ -40,7 +40,7 @@ def test_application_title() -> None:
 
 
 def test_application_logo() -> None:
-    app = Starlette()
+    app = Litestar()
     Admin(
         app=app,
         engine=engine,
@@ -67,12 +67,12 @@ def test_middlewares() -> None:
             async def send_wrapper(message: Message) -> None:
                 if message["type"] == "http.response.start":
                     headers = MutableHeaders(scope=message)
-                    headers.append("X-Correlation-ID", "UUID")
+                    headers.add("X-Correlation-ID", "UUID")
                 await send(message)
 
             await self.app(scope, receive, send_wrapper)
 
-    app = Starlette()
+    app = Litestar()
     Admin(
         app=app,
         engine=engine,
@@ -87,7 +87,15 @@ def test_middlewares() -> None:
 
 
 def test_get_save_redirect_url():
-    app = Starlette()
+
+    @route("/x/{identity:str}", http_method=["POST"])
+    async def index(request: Request) -> Response:
+        obj = User(id=1)
+        form_data = await request.form()
+        url = admin.get_save_redirect_url(request, form_data, admin.views[0], obj)
+        return Response(str(url))
+
+    app = Litestar(route_handlers=[index])
     admin = Admin(app=app, engine=engine)
 
     class UserAdmin(ModelView, model=User):
@@ -95,30 +103,23 @@ def test_get_save_redirect_url():
 
     admin.add_view(UserAdmin)
 
-    @app.route("/{identity}", methods=["POST"])
-    async def index(request: Request):
-        obj = User(id=1)
-        form_data = await request.form()
-        url = admin.get_save_redirect_url(request, form_data, admin.views[0], obj)
-        return Response(str(url))
-
     client = TestClient(app)
 
-    response = client.post("/user", data={"save": "Save"})
+    response = client.post("/x/user", data={"save": "Save"})
     assert response.text == "http://testserver/admin/user/list"
 
-    response = client.post("/user", data={"save": "Save and continue editing"})
+    response = client.post("/x/user", data={"save": "Save and continue editing"})
     assert response.text == "http://testserver/admin/user/edit/1"
 
-    response = client.post("/user", data={"save": "Save as new"})
+    response = client.post("/x/user", data={"save": "Save as new"})
     assert response.text == "http://testserver/admin/user/edit/1"
 
-    response = client.post("/user", data={"save": "Save and add another"})
+    response = client.post("/x/user", data={"save": "Save and add another"})
     assert response.text == "http://testserver/admin/user/create"
 
 
 def test_build_category_menu():
-    app = Starlette()
+    app = Litestar()
     admin = Admin(app=app, engine=engine)
 
     class UserAdmin(ModelView, model=User):
@@ -130,11 +131,10 @@ def test_build_category_menu():
 
 
 def test_normalize_wtform_fields() -> None:
-    app = Starlette()
+    app = Litestar()
     admin = Admin(app=app, engine=engine)
 
-    class DataModelAdmin(ModelView, model=DataModel):
-        ...
+    class DataModelAdmin(ModelView, model=DataModel): ...
 
     datamodel = DataModel(id=1, data="abcdef")
     admin.add_view(DataModelAdmin)
@@ -142,11 +142,10 @@ def test_normalize_wtform_fields() -> None:
 
 
 def test_denormalize_wtform_fields() -> None:
-    app = Starlette()
+    app = Litestar()
     admin = Admin(app=app, engine=engine)
 
-    class DataModelAdmin(ModelView, model=DataModel):
-        ...
+    class DataModelAdmin(ModelView, model=DataModel): ...
 
     datamodel = DataModel(id=1, data="abcdef")
     admin.add_view(DataModelAdmin)

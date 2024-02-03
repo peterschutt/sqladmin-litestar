@@ -4,9 +4,9 @@ from unittest.mock import Mock
 import pytest
 from sqlalchemy import Column, Integer
 from sqlalchemy.orm import declarative_base, sessionmaker
-from starlette.applications import Starlette
-from starlette.requests import Request
-from starlette.responses import RedirectResponse, Response
+from litestar import Litestar
+from litestar import Request
+from litestar.response import Redirect as RedirectResponse, Response
 from starlette.testclient import TestClient
 
 from sqladmin import Admin, ModelView
@@ -17,7 +17,7 @@ Base: Any = declarative_base()
 
 Session = sessionmaker(bind=engine)
 
-app = Starlette()
+app = Litestar()
 admin = Admin(app=app, engine=engine)
 
 

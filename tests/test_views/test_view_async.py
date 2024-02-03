@@ -17,8 +17,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import declarative_base, relationship, selectinload, sessionmaker
-from starlette.applications import Starlette
-from starlette.requests import Request
+from litestar import Litestar
+from litestar import Request
 
 from sqladmin import Admin, ModelView
 from tests.common import async_engine as engine
@@ -28,7 +28,7 @@ pytestmark = pytest.mark.anyio
 Base = declarative_base()  # type: Any
 session_maker = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
-app = Starlette()
+app = Litestar()
 admin = Admin(app=app, engine=engine)
 
 

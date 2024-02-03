@@ -3,8 +3,8 @@ from typing import Any, Generator
 import pytest
 from sqlalchemy import Column, ForeignKey, ForeignKeyConstraint, Integer, String
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
-from starlette.applications import Starlette
-from starlette.testclient import TestClient
+from litestar import Litestar
+from litestar.testing import TestClient
 
 from sqladmin import Admin, ModelView
 from tests.common import sync_engine as engine
@@ -12,7 +12,7 @@ from tests.common import sync_engine as engine
 Base = declarative_base()  # type: Any
 session_maker = sessionmaker(bind=engine)
 
-app = Starlette()
+app = Litestar()
 admin = Admin(app=app, engine=engine)
 
 
@@ -132,6 +132,7 @@ admin.add_view(ReviewComplaintAdmin)
 
 def base_content():
     with session_maker() as session:
+        
         session.add(Movie(id=1, name="Python"))
         session.add(Movie(id=2, name="Cobra"))
         session.add(Movie(id=3, name="Cobra 2"))
@@ -192,7 +193,7 @@ def test_root_view(client: TestClient) -> None:
 
 
 def test_list_multipk_items(client: TestClient) -> None:
-    base_content()
+    # base_content()
     response = client.get("/admin/review/list")
     assert response.status_code == 200
 
