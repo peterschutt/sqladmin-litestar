@@ -21,12 +21,12 @@ class Jinja2Templates:
             return request.url_for_static_asset(__name, **path_params)
 
         loader = jinja2.FileSystemLoader(directory)
-        self.env = jinja2.Environment(loader=loader, autoescape=True, enable_async=True)
+        self.env = jinja2.Environment(loader=loader, autoescape=True)
         self.env.globals["url_for"] = url_for
         self.env.globals["url_for_static_asset"] = url_for_static_asset
         self.env.globals["include_query_params"] = include_query_params
 
-    async def TemplateResponse(
+    def TemplateResponse(
         self,
         request: Request,
         name: str,
@@ -36,5 +36,5 @@ class Jinja2Templates:
         context = context or {}
         context.setdefault("request", request)
         template = self.env.get_template(name)
-        content = await template.render_async(context)
+        content = template.render(context)
         return Response(content, media_type="text/html", status_code=status_code)

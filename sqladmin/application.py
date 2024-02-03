@@ -1,3 +1,4 @@
+from collections import defaultdict
 import inspect
 import logging
 from types import MethodType
@@ -84,6 +85,7 @@ class BaseAdmin:
         self.templates_dir = templates_dir
         self.title = title
         self.logo_url = logo_url
+        self.admin: Litestar | None = None
         self.router = Router(self.base_url, route_handlers=[])
 
         if session_maker:
@@ -104,18 +106,6 @@ class BaseAdmin:
 
         self.templates = self.init_templating_engine()
 
-        self.admin = Litestar(
-            middleware=middlewares,
-            route_handlers=[],
-            debug=True,
-            static_files_config=[
-                StaticFilesConfig(
-                    path="sqladmin/statics",
-                    name="admin:statics",
-                    directories=["sqladmin/statics"],
-                )
-            ],
-        )
         self._views: List[Union[BaseView, ModelView]] = []
         self._menu = Menu()
 
@@ -185,15 +175,16 @@ class BaseAdmin:
     ) -> None:
         if hasattr(func, "_action"):
             view_instance = cast(ModelView, view_instance)
-            self.router.register(
+            self.admin.register(
                 HTTPRouteHandler(
-                    f"/{view_instance.identity}/action/" + getattr(func, "_slug"),
-                    name=f"action-{view_instance.identity}-{getattr(func, '_slug')}",
+                    f"admin/{view_instance.identity}/action/" + getattr(func, "_slug"),
+                    name=f"admin:action-{view_instance.identity}-{getattr(func, '_slug')}",
                     http_method="GET",
                     include_in_schema=getattr(func, "_include_in_schema"),
                 )(func)
             )
-
+            if self.admin:
+                self.admin.asgi_router.construct_routing_trie()
             if getattr(func, "_add_in_list"):
                 view_instance._custom_actions_in_list[getattr(func, "_slug")] = getattr(
                     func, "_label"
@@ -215,15 +206,16 @@ class BaseAdmin:
         view_instance: Union[BaseView, ModelView],
     ) -> None:
         if hasattr(func, "_exposed"):
-            self.router.register(
+            self.admin.register(
                 HTTPRouteHandler(
-                    getattr(func, "_path"),
-                    name=getattr(func, "_identity"),
+                    "/admin" + getattr(func, "_path"),
+                    name="admin:" +getattr(func, "_identity"),
                     http_method=getattr(func, "_methods"),
                     include_in_schema=getattr(func, "_include_in_schema"),
                 )(func)
             )
-
+            if self.admin:
+                self.admin.asgi_router.construct_routing_trie()
             view.identity = getattr(func, "_identity")
 
     def add_model_view(self, view: Type[ModelView]) -> None:
@@ -272,7 +264,7 @@ class BaseAdmin:
             admin.add_base_view(CustomAdmin)
             ```
         """
-
+        view.templates = self.templates
         view_instance = view()
 
         self._find_decorated_funcs(
@@ -386,18 +378,32 @@ class Admin(BaseAdminView):
             authentication_backend=authentication_backend,
         )
 
-        async def http_exception(request: Request, exc: Exception) -> Response:
+        def http_exception(request: Request, exc: Exception) -> Response:
             assert isinstance(exc, HTTPException)
             context = {
                 "status_code": exc.status_code,
                 "message": exc.detail,
             }
-            return await self.templates.TemplateResponse(
+            return self.templates.TemplateResponse(
                 name="error.html",
                 request=request,
                 context=context,
                 status_code=exc.status_code,
             )
+
+        self.admin = Litestar(
+            middleware=middlewares,
+            route_handlers=[],
+            debug=True,
+            static_files_config=[
+                StaticFilesConfig(
+                    path="sqladmin/statics",
+                    name="admin:statics",
+                    directories=["sqladmin/statics"],
+                )
+            ],
+            exception_handlers={HTTPException: http_exception},
+        )
 
         route_handlers = [
             HTTPRouteHandler("/", name="admin:index", http_method="GET")(self.index),
@@ -461,11 +467,15 @@ class Admin(BaseAdminView):
             asgi(name="Admin", is_mount=True)(self.admin),
         )
 
+    async def refresh_routers(self) -> None:
+        """Index route which can be overridden to create dashboards."""
+        self.admin.asgi_router.construct_routing_trie()
+
     @login_required
     async def index(self, request: Request) -> Response:
         """Index route which can be overridden to create dashboards."""
 
-        return await self.templates.TemplateResponse(request=request, name="index.html")
+        return self.templates.TemplateResponse(request=request, name="index.html")
 
     @login_required
     async def list(self, request: Request) -> Response:
@@ -476,11 +486,30 @@ class Admin(BaseAdminView):
         model_view: ModelView = self._find_model_view(request.path_params["identity"])
         pagination = await model_view.list(request)
         pagination.add_pagination_urls(request.url)
-
-        context = {"model_view": model_view, "pagination": pagination}
-        return await self.templates.TemplateResponse(
+        list_values = await self.get_list_values(model_view, pagination.rows)
+        context = {
+            "model_view": model_view,
+            "pagination": pagination,
+            "list_values": list_values,
+        }
+        return self.templates.TemplateResponse(
             name=model_view.list_template, request=request, context=context
         )
+
+    async def get_list_values(self, model_view: ModelView, rows):
+        values = defaultdict(dict)
+        for model in rows:
+            for name in model_view._list_prop_names:
+                value, formatted_value = await model_view.get_list_value(model, name)
+                values[model][name] = (value, formatted_value)
+        return values
+
+    async def get_detail_values(self, model_view: ModelView, model):
+        values = defaultdict(dict)
+        for name in model_view._details_prop_names:
+            value, formatted_value = await model_view.get_detail_value(model, name)
+            values[model][name] = (value, formatted_value)
+        return values
 
     @login_required
     async def details(self, request: Request) -> Response:
@@ -488,19 +517,20 @@ class Admin(BaseAdminView):
 
         await self._details(request)
 
-        model_view = self._find_model_view(request.path_params["identity"])
+        model_view: ModelView = self._find_model_view(request.path_params["identity"])
 
         model = await model_view.get_object_for_details(request.path_params["pk"])
         if not model:
             raise HTTPException(status_code=404)
-
+        detail_values = await self.get_detail_values(model_view, model)
         context = {
             "model_view": model_view,
             "model": model,
             "title": model_view.name,
+            "detail_values": detail_values,
         }
 
-        return await self.templates.TemplateResponse(
+        return self.templates.TemplateResponse(
             name=model_view.details_template, request=request, context=context
         )
 
@@ -543,12 +573,12 @@ class Admin(BaseAdminView):
         }
 
         if request.method == "GET":
-            return await self.templates.TemplateResponse(
+            return self.templates.TemplateResponse(
                 name=model_view.create_template, request=request, context=context
             )
 
         if not form.validate():
-            return await self.templates.TemplateResponse(
+            return self.templates.TemplateResponse(
                 name=model_view.create_template,
                 request=request,
                 context=context,
@@ -561,7 +591,7 @@ class Admin(BaseAdminView):
         except Exception as e:
             logger.exception(e)
             context["error"] = str(e)
-            return await self.templates.TemplateResponse(
+            return self.templates.TemplateResponse(
                 name=model_view.create_template,
                 request=request,
                 context=context,
@@ -597,7 +627,7 @@ class Admin(BaseAdminView):
         }
 
         if request.method == "GET":
-            return await self.templates.TemplateResponse(
+            return self.templates.TemplateResponse(
                 name=model_view.edit_template, request=request, context=context
             )
 
@@ -605,7 +635,7 @@ class Admin(BaseAdminView):
         form = Form(form_data)
         if not form.validate():
             context["form"] = form
-            return await self.templates.TemplateResponse(
+            return self.templates.TemplateResponse(
                 name=model_view.edit_template,
                 request=request,
                 context=context,
@@ -623,7 +653,7 @@ class Admin(BaseAdminView):
         except Exception as e:
             logger.exception(e)
             context["error"] = str(e)
-            return await self.templates.TemplateResponse(
+            return self.templates.TemplateResponse(
                 name=model_view.edit_template,
                 request=request,
                 context=context,
@@ -658,7 +688,7 @@ class Admin(BaseAdminView):
 
         context = {}
         if request.method == "GET":
-            return await self.templates.TemplateResponse(
+            return self.templates.TemplateResponse(
                 name="login.html",
                 request=request,
             )
@@ -666,7 +696,7 @@ class Admin(BaseAdminView):
         ok = await self.authentication_backend.login(request)
         if not ok:
             context["error"] = "Invalid credentials."
-            return await self.templates.TemplateResponse(
+            return self.templates.TemplateResponse(
                 name="login.html",
                 request=request,
                 context=context,
