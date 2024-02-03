@@ -273,6 +273,9 @@ class QuerySelectMultipleField(QuerySelectField):
                 yield (pk, self.get_label(label), pk in primary_keys, {})
 
     def process_formdata(self, valuelist: List[str]) -> None:
+        if isinstance(next(iter(valuelist), None), list):
+            self._formdata = list(set(valuelist[0]))
+            return
         self._formdata = list(set(valuelist))
 
     def pre_validate(self, form: Form) -> None:
@@ -364,15 +367,14 @@ class AjaxSelectMultipleField(fields.SelectFieldBase):
         self._formdata = set()
 
         for field in valuelist:
-            for n in field.split(self.separator):
+            for n in field:
                 self._formdata.add(n)
 
 
 class Select2TagsField(fields.SelectField):
     widget = sqladmin_widgets.Select2TagsWidget()
 
-    def pre_validate(self, form: Form) -> None:
-        ...
+    def pre_validate(self, form: Form) -> None: ...
 
     def process_formdata(self, valuelist: list) -> None:
         self.data = valuelist
