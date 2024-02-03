@@ -3,8 +3,7 @@
     <img width="400px" src="https://raw.githubusercontent.com/aminalaee/sqladmin/main/docs/assets/images/banner.png" alt"SQLAdmin">
 </a>
 </p>
-# This is the port of Sqladmin to Litestar WIP 
-# There may be breaking changes, probably will
+
 <p align="center">
 <a href="https://github.com/aminalaee/sqladmin/actions">
     <img src="https://github.com/aminalaee/sqladmin/workflows/Test%20Suite/badge.svg" alt="Build Status">
@@ -24,8 +23,11 @@
 </p>
 
 ---
+# This is the port of Sqladmin to Litestar WIP 
+# There may be breaking changes, probably will
 
-# SQLAlchemy Admin for Starlette/FastAPI
+
+# SQLAlchemy Admin for Litestar
 
 SQLAdmin is a flexible Admin interface for SQLAlchemy models.
 
