@@ -34,8 +34,7 @@ SQLAdmin is a flexible Admin interface for SQLAlchemy models.
 Main features include:
 
 * [SQLAlchemy](https://github.com/sqlalchemy/sqlalchemy) sync/async engines
-* [Starlette](https://github.com/encode/starlette) integration
-* [FastAPI](https://github.com/tiangolo/fastapi) integration
+* [Litestar](https://github.com/litestar-org/litestar) integration
 * [WTForms](https://github.com/wtforms/wtforms) form building
 * [SQLModel](https://github.com/tiangolo/sqlmodel) support
 * UI using [Tabler](https://github.com/tabler/tabler)
@@ -44,7 +43,9 @@ Main features include:
 
 **Documentation**: [https://aminalaee.dev/sqladmin](https://aminalaee.dev/sqladmin)
 
-**Source Code**: [https://github.com/aminalaee/sqladmin](https://github.com/aminalaee/sqladmin)
+**Source Code**: [https://github.com/cemrehancavdar/sqladmin-litestar](https://github.com/cemrehancavdar/sqladmin-litestar)
+
+**Original Source Code**: [https://github.com/aminalaee/sqladmin](https://github.com/aminalaee/sqladmin)
 
 **Online Demo**: [Demo](https://sqladmin-demo.aminalaee.dev/admin/)
 
@@ -55,13 +56,13 @@ Main features include:
 Install using `pip`:
 
 ```shell
-$ pip install sqladmin
+$ pip install sqladmin-litestar
 ```
 
 This will install the full version of sqladmin with optional dependencies:
 
 ```shell
-$ pip install "sqladmin[full]"
+$ pip install "sqladmin-litestar[full]"
 ```
 
 ---
@@ -97,32 +98,14 @@ class User(Base):
 Base.metadata.create_all(engine)  # Create tables
 ```
 
-If you want to use `SQLAdmin` with `FastAPI`:
+If you want to use `SQLAdmin` with `Litestar`:
 
 ```python
-from fastapi import FastAPI
+from litestar import Litestar
 from sqladmin import Admin, ModelView
 
 
-app = FastAPI()
-admin = Admin(app, engine)
-
-
-class UserAdmin(ModelView, model=User):
-    column_list = [User.id, User.name]
-
-
-admin.add_view(UserAdmin)
-```
-
-Or if you want to use `SQLAdmin` with `Starlette`:
-
-```python
-from sqladmin import Admin, ModelView
-from starlette.applications import Starlette
-
-
-app = Starlette()
+app = Litestar()
 admin = Admin(app, engine)
 
 
@@ -136,7 +119,7 @@ admin.add_view(UserAdmin)
 Now visiting `/admin` on your browser you can see the `SQLAdmin` interface.
 
 ## Related projects and inspirations
-
+* [SQLAdmin](https://github.com/aminalaee/sqladmin) The original SQLAdmin Repository
 * [Flask-Admin](https://github.com/flask-admin/flask-admin) Admin interface for Flask supporting different database backends and ORMs. This project has inspired SQLAdmin extensively and most of the features and configurations are implemented the same.
 * [FastAPI-Admin](https://github.com/fastapi-admin/fastapi-admin) Admin interface for FastAPI which works with `TortoiseORM`.
 * [Dashboard](https://github.com/encode/dashboard) Admin interface for ASGI frameworks which works with the `orm` package.
