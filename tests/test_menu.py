@@ -1,7 +1,6 @@
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.orm import declarative_base
-from starlette.requests import Request
-
+from litestar.testing import RequestFactory
 from sqladmin import ModelView
 from sqladmin._menu import CategoryMenu, ItemMenu, Menu, ViewMenu
 
@@ -19,7 +18,7 @@ class UserAdmin(ModelView, model=User):
     ...
 
 
-request = Request({"type": "http"})
+request = RequestFactory().get("/")
 
 
 def test_item_menu():

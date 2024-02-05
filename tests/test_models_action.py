@@ -7,7 +7,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from litestar import Litestar
 from litestar import Request
 from litestar.response import Redirect as RedirectResponse, Response
-from starlette.testclient import TestClient
+from litestar.testing import TestClient
 
 from sqladmin import Admin, ModelView
 from sqladmin.application import action

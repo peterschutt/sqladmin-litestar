@@ -1,10 +1,9 @@
 from typing import Generator
 
 import pytest
-from starlette.applications import Starlette
-from starlette.requests import Request
-from starlette.responses import RedirectResponse
-from starlette.testclient import TestClient
+from litestar import Litestar, Request, Response
+from litestar.response import Redirect
+from litestar.testing import TestClient
 
 from sqladmin import Admin
 from sqladmin.authentication import AuthenticationBackend
@@ -22,16 +21,17 @@ class CustomBackend(AuthenticationBackend):
 
     async def logout(self, request: Request) -> bool:
         request.session.clear()
+        request.cookies.clear()
         return True
 
-    async def authenticate(self, request: Request) -> bool:
+    async def authenticate(self, request: Request) -> bool | Response:
         if "token" in request.session:
-            return RedirectResponse(request.url_for("admin:login"), status_code=302)
+            return Redirect(request.url_for("admin:login"), status_code=302)
         return False
 
 
-app = Starlette()
-authentication_backend = CustomBackend(secret_key="sqladmin")
+app = Litestar()
+authentication_backend = CustomBackend(secret_key="1234567891234561")
 admin = Admin(app=app, engine=engine, authentication_backend=authentication_backend)
 
 
