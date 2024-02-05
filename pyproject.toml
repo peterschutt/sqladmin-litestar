@@ -3,13 +3,16 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "sqladmin"
-description = 'SQLAlchemy admin for FastAPI and Starlette'
+name = "sqladmin-litestar"
+description = 'SQLAlchemy admin for Litestar'
 readme = "README.md"
 requires-python = ">=3.8"
 license = "BSD-3-Clause"
-keywords = ["sqlalchemy", "fastapi", "starlette", "admin"]
-authors = [{ name = "Amin Alaee", email = "me@aminalaee.dev" }]
+keywords = ["sqlalchemy", "litestar", "admin"]
+authors = [
+  { name = "Amin Alaee", email = "me@aminalaee.dev" },
+  { name = "Cemrehan Çavdar", email = "cemrehancavdar@hotmail.com" },
+]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Programming Language :: Python",
