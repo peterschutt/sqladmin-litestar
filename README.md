@@ -23,8 +23,7 @@
 </p>
 
 ---
-# This is the port of Sqladmin to Litestar WIP 
-# There may be breaking changes, probably will
+
 
 
 # SQLAlchemy Admin for Litestar
@@ -117,6 +116,25 @@ admin.add_view(UserAdmin)
 ```
 
 Now visiting `/admin` on your browser you can see the `SQLAdmin` interface.
+
+
+## Differences between SQLAdmin and SQLAdmin-Litestar
+
+1) Working with Custom Views
+   
+ SQLAdmin-Litestar templates works sync, and handlers should be annotated.
+   ```
+    @expose("/report", methods=["GET"])
+    async def report_page(self, request):
+        return await self.templates.TemplateResponse(request, "report.html")
+   ```
+    should be changed to
+   ```
+    @expose("/report", methods=["GET"])
+    async def report_page(self, request) -> str:
+        return self.templates.TemplateResponse(request, "report.html")
+   ```
+
 
 ## Related projects and inspirations
 * [SQLAdmin](https://github.com/aminalaee/sqladmin) The original SQLAdmin Repository
