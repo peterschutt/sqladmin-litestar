@@ -23,8 +23,11 @@
 </p>
 
 ---
+# This is the port of Sqladmin to Litestar WIP 
+# There may be breaking changes, probably will
 
-# SQLAlchemy Admin for Starlette/FastAPI
+
+# SQLAlchemy Admin for Litestar
 
 SQLAdmin is a flexible Admin interface for SQLAlchemy models.
 
