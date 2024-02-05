@@ -3,7 +3,6 @@ import inspect
 from typing import Any, Callable, Union
 
 from litestar import Request
-from litestar.middleware import DefineMiddleware
 from litestar.response import Redirect as RedirectResponse
 from litestar.response import Response
 
@@ -15,10 +14,11 @@ class AuthenticationBackend:
     """
 
     def __init__(self, secret_key: str) -> None:
-        from litestar.middleware.session import SessionMiddleware
+        from litestar.middleware.session.client_side import CookieBackendConfig
 
+        session_config = CookieBackendConfig(secret=secret_key.encode("utf-8"))
         self.middlewares = [
-            DefineMiddleware(SessionMiddleware, secret_key=secret_key),
+            session_config.middleware,
         ]
 
     async def login(self, request: Request) -> bool:

@@ -724,7 +724,7 @@ class ModelView(BaseView, metaclass=ModelViewMeta):
         return request.url_for(
             name,
             identity=slugify_class_name(obj.__class__.__name__),
-            pk=get_object_identifier(obj),
+            pk=str(get_object_identifier(obj)),
         )
 
     def _get_default_sort(self) -> List[Tuple[str, bool]]:

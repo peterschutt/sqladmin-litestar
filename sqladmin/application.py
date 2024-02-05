@@ -87,7 +87,6 @@ class BaseAdmin:
         self.logo_url = logo_url
         self.admin: Litestar | None = None
         self.router = Router(self.base_url, route_handlers=[])
-
         if session_maker:
             self.session_maker = session_maker
         elif isinstance(engine, Engine):
@@ -98,11 +97,11 @@ class BaseAdmin:
         self.session_maker.configure(autoflush=False, autocommit=False)
         self.is_async = is_async_session_maker(self.session_maker)
 
-        middlewares = middlewares or []
+        self.middlewares = middlewares or []
         self.authentication_backend = authentication_backend
         if authentication_backend:
-            middlewares = list(middlewares)
-            middlewares.extend(authentication_backend.middlewares)
+            self.middlewares = list(self.middlewares)
+            self.middlewares.extend(authentication_backend.middlewares)
 
         self.templates = self.init_templating_engine()
 
@@ -392,7 +391,7 @@ class Admin(BaseAdminView):
             )
 
         self.admin = Litestar(
-            middleware=middlewares,
+            middleware=self.middlewares,
             route_handlers=[],
             debug=True,
             static_files_config=[
@@ -414,7 +413,7 @@ class Admin(BaseAdminView):
                 http_method="GET",
             )(self.list),
             HTTPRouteHandler(
-                "/{identity:str}/details/{pk:int}",
+                "/{identity:str}/details/{pk:str}",
                 name="admin:details",
                 http_method="GET",
             )(self.details),
@@ -431,7 +430,7 @@ class Admin(BaseAdminView):
                 http_method=["GET", "POST"],
             )(self.create),
             HTTPRouteHandler(
-                "/{identity:str}/edit/{pk:int}",
+                "/{identity:str}/edit/{pk:str}",
                 name="admin:edit",
                 http_method=["GET", "POST"],
             )(self.edit),
@@ -747,7 +746,7 @@ class Admin(BaseAdminView):
         elif form.get("save") == "Save and continue editing" or (
             form.get("save") == "Save as new" and model_view.save_as_continue
         ):
-            return request.url_for("admin:edit", identity=identity, pk=identifier)
+            return request.url_for("admin:edit", identity=identity, pk=str(identifier))
         return request.url_for("admin:create", identity=identity)
 
     async def _handle_form_data(
