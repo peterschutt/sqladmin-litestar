@@ -2,14 +2,13 @@ import enum
 from typing import Generator
 
 import pytest
+from litestar import Litestar, Request
+from litestar.testing import RequestFactory
 from markupsafe import Markup
 from sqlalchemy import Boolean, Column, Enum, ForeignKey, Integer, String, select
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from sqlalchemy.sql.expression import Select
-from litestar import Litestar
-from litestar import Request
-from litestar.testing import RequestFactory
 
 from sqladmin import Admin, ModelView
 from sqladmin.exceptions import InvalidModelError
@@ -178,7 +177,8 @@ async def test_column_formatters_detail() -> None:
 
 
 async def test_column_formatters_default() -> None:
-    class ProfileAdmin(ModelView, model=Profile): ...
+    class ProfileAdmin(ModelView, model=Profile):
+        ...
 
     user = User(id=1, name="Long Name")
     profile = Profile(user=user, is_active=True)
@@ -341,7 +341,8 @@ def test_get_python_type_postgresql() -> None:
 
 
 def test_model_default_sort() -> None:
-    class UserAdmin(ModelView, model=User): ...
+    class UserAdmin(ModelView, model=User):
+        ...
 
     assert UserAdmin()._get_default_sort() == [("id", False)]
 
@@ -417,19 +418,24 @@ async def test_model_property_in_columns() -> None:
 
 
 def test_sort_query() -> None:
-    class AddressAdmin(ModelView, model=Address): ...
+    class AddressAdmin(ModelView, model=Address):
+        ...
 
     query = select(Address)
 
-    request = RequestFactory().get("/", query_params={"sortBy":"id", "sort":"asc"})
+    request = RequestFactory().get("/", query_params={"sortBy": "id", "sort": "asc"})
     stmt = AddressAdmin().sort_query(query, request)
     assert "ORDER BY addresses.id ASC" in str(stmt)
 
-    request = RequestFactory().get("/", query_params={"sortBy":"user.name", "sort":"desc"})
+    request = RequestFactory().get(
+        "/", query_params={"sortBy": "user.name", "sort": "desc"}
+    )
     stmt = AddressAdmin().sort_query(query, request)
     assert "ORDER BY users.name DESC" in str(stmt)
 
-    request = RequestFactory().get("/", query_params={"sortBy":"user.profile.role", "sort":"asc"})
+    request = RequestFactory().get(
+        "/", query_params={"sortBy": "user.profile.role", "sort": "asc"}
+    )
     stmt = AddressAdmin().sort_query(query, request)
     assert "ORDER BY profiles.role ASC" in str(stmt)
 

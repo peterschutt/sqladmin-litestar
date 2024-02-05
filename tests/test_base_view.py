@@ -1,10 +1,9 @@
 from typing import Generator
 
 import pytest
-from sqlalchemy.orm import declarative_base
-from litestar import Litestar
-from litestar import Request, Response
+from litestar import Litestar, Request, Response
 from litestar.testing import TestClient
+from sqlalchemy.orm import declarative_base
 
 from sqladmin import Admin, BaseView, expose
 from tests.common import sync_engine as engine

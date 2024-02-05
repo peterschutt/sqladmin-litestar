@@ -1,6 +1,7 @@
+from litestar.testing import RequestFactory
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.orm import declarative_base
-from litestar.testing import RequestFactory
+
 from sqladmin import ModelView
 from sqladmin._menu import CategoryMenu, ItemMenu, Menu, ViewMenu
 

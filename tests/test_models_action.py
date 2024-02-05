@@ -2,12 +2,12 @@ from typing import Any, Generator, List
 from unittest.mock import Mock
 
 import pytest
+from litestar import Litestar, Request
+from litestar.response import Redirect as RedirectResponse
+from litestar.response import Response
+from litestar.testing import TestClient
 from sqlalchemy import Column, Integer
 from sqlalchemy.orm import declarative_base, sessionmaker
-from litestar import Litestar
-from litestar import Request
-from litestar.response import Redirect as RedirectResponse, Response
-from litestar.testing import TestClient
 
 from sqladmin import Admin, ModelView
 from sqladmin.application import action

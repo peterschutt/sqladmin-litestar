@@ -3,6 +3,7 @@ from typing import Any, AsyncGenerator
 
 import pytest
 from httpx import AsyncClient
+from litestar import Litestar, Request
 from sqlalchemy import (
     JSON,
     BigInteger,
@@ -17,8 +18,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import declarative_base, relationship, selectinload, sessionmaker
-from litestar import Litestar
-from litestar import Request
 
 from sqladmin import Admin, ModelView
 from tests.common import async_engine as engine

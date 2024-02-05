@@ -1,6 +1,6 @@
-from collections import defaultdict
 import inspect
 import logging
+from collections import defaultdict
 from types import MethodType
 from typing import (
     TYPE_CHECKING,
@@ -189,14 +189,14 @@ class BaseAdmin:
                     func, "_label"
                 )
             if getattr(func, "_add_in_detail"):
-                view_instance._custom_actions_in_detail[getattr(func, "_slug")] = (
-                    getattr(func, "_label")
-                )
+                view_instance._custom_actions_in_detail[
+                    getattr(func, "_slug")
+                ] = getattr(func, "_label")
 
             if getattr(func, "_confirmation_message"):
-                view_instance._custom_actions_confirmation[getattr(func, "_slug")] = (
-                    getattr(func, "_confirmation_message")
-                )
+                view_instance._custom_actions_confirmation[
+                    getattr(func, "_slug")
+                ] = getattr(func, "_confirmation_message")
 
     def _handle_expose_decorated_func(
         self,
@@ -208,7 +208,7 @@ class BaseAdmin:
             self.admin.register(
                 HTTPRouteHandler(
                     "/admin" + getattr(func, "_path"),
-                    name="admin:" +getattr(func, "_identity"),
+                    name="admin:" + getattr(func, "_identity"),
                     http_method=getattr(func, "_methods"),
                     include_in_schema=getattr(func, "_include_in_schema"),
                 )(func)

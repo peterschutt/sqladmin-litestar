@@ -2,10 +2,10 @@ from typing import Any, AsyncGenerator
 
 import pytest
 from httpx import AsyncClient
+from litestar import Litestar
 from sqlalchemy import Column, ForeignKey, Integer, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import declarative_base, relationship, selectinload, sessionmaker
-from litestar import Litestar
 
 from sqladmin import Admin, ModelView
 from sqladmin.ajax import create_ajax_loader

@@ -1,12 +1,11 @@
-from sqlalchemy import Column, Integer, String
-from sqlalchemy.orm import declarative_base
-from litestar import Litestar, route
+from litestar import Litestar, Request, route
 from litestar.datastructures import MutableScopeHeaders as MutableHeaders
 from litestar.middleware import DefineMiddleware as Middleware
-from litestar import Request
 from litestar.response import Response
 from litestar.testing import TestClient
 from litestar.types import ASGIApp, Message, Receive, Scope, Send
+from sqlalchemy import Column, Integer, String
+from sqlalchemy.orm import declarative_base
 
 from sqladmin import Admin, ModelView
 from tests.common import sync_engine as engine
@@ -87,7 +86,6 @@ def test_middlewares() -> None:
 
 
 def test_get_save_redirect_url():
-
     @route("/x/{identity:str}", http_method=["POST"])
     async def index(request: Request) -> Response:
         obj = User(id=1)
@@ -134,7 +132,8 @@ def test_normalize_wtform_fields() -> None:
     app = Litestar()
     admin = Admin(app=app, engine=engine)
 
-    class DataModelAdmin(ModelView, model=DataModel): ...
+    class DataModelAdmin(ModelView, model=DataModel):
+        ...
 
     datamodel = DataModel(id=1, data="abcdef")
     admin.add_view(DataModelAdmin)
@@ -145,7 +144,8 @@ def test_denormalize_wtform_fields() -> None:
     app = Litestar()
     admin = Admin(app=app, engine=engine)
 
-    class DataModelAdmin(ModelView, model=DataModel): ...
+    class DataModelAdmin(ModelView, model=DataModel):
+        ...
 
     datamodel = DataModel(id=1, data="abcdef")
     admin.add_view(DataModelAdmin)
