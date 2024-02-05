@@ -1,5 +1,6 @@
 import inspect
 import logging
+import os
 from collections import defaultdict
 from types import MethodType
 from typing import (
@@ -177,7 +178,7 @@ class BaseAdmin:
             self.admin.register(
                 HTTPRouteHandler(
                     f"admin/{view_instance.identity}/action/" + getattr(func, "_slug"),
-                    name=f"admin:action-{view_instance.identity}-{getattr(func, '_slug')}",
+                    name=f"admin:action-{view_instance.identity}-{getattr(func, '_slug')}",  # noqa: E501
                     http_method="GET",
                     include_in_schema=getattr(func, "_include_in_schema"),
                 )(func)
@@ -396,9 +397,9 @@ class Admin(BaseAdminView):
             debug=True,
             static_files_config=[
                 StaticFilesConfig(
-                    path="sqladmin/statics",
+                    path="admin/statics",
                     name="admin:statics",
-                    directories=["sqladmin/statics"],
+                    directories=[os.path.join(os.path.dirname(__file__), "statics")],
                 )
             ],
             exception_handlers={HTTPException: http_exception},
