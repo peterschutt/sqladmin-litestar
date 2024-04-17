@@ -24,17 +24,20 @@ from litestar import (
     MediaType,
     Request,
     Router,
-    asgi,
 )
+from litestar.config.app import AppConfig
 from litestar.datastructures import FormMultiDict, UploadFile
+from litestar.di import Provide
 from litestar.exceptions import HTTPException
 from litestar.handlers import HTTPRouteHandler
 from litestar.middleware import DefineMiddleware
+from litestar.plugins import InitPluginProtocol
 from litestar.response import Redirect, Response
-from litestar.static_files import StaticFilesConfig
+from litestar.static_files import StaticFilesConfig, create_static_files_router
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, sessionmaker
+from typing_extensions import Self
 
 from sqladmin._menu import CategoryMenu, Menu, ViewMenu
 from sqladmin._types import ENGINE_TYPE
@@ -70,7 +73,6 @@ class BaseAdmin:
 
     def __init__(
         self,
-        app: Litestar,
         engine: Optional[ENGINE_TYPE] = None,
         session_maker: Optional[sessionmaker] = None,
         base_url: str = "/admin",
@@ -80,7 +82,6 @@ class BaseAdmin:
         middlewares: Optional[Sequence[DefineMiddleware]] = None,
         authentication_backend: Optional[AuthenticationBackend] = None,
     ) -> None:
-        self.app = app
         self.engine = engine
         self.base_url = base_url
         self.templates_dir = templates_dir
@@ -320,7 +321,7 @@ class BaseAdminView(BaseAdmin):
             raise HTTPException(status_code=404)
 
 
-class Admin(BaseAdminView):
+class Admin(BaseAdminView, InitPluginProtocol):
     """Main entrypoint to admin interface.
 
     ???+ usage
@@ -345,20 +346,17 @@ class Admin(BaseAdminView):
 
     def __init__(
         self,
-        app: Litestar,
         engine: Optional[ENGINE_TYPE] = None,
         session_maker: Optional[Union[sessionmaker, "async_sessionmaker"]] = None,
         base_url: str = "/admin",
         title: str = "Admin",
         logo_url: Optional[str] = None,
         middlewares: Optional[Sequence[DefineMiddleware]] = None,
-        debug: bool = False,
         templates_dir: str = "templates",
         authentication_backend: Optional[AuthenticationBackend] = None,
     ) -> None:
         """
         Args:
-            app: Litestar application.
             engine: SQLAlchemy engine instance.
             session_maker: SQLAlchemy sessionmaker instance.
             base_url: Base URL for Admin interface.
@@ -367,7 +365,6 @@ class Admin(BaseAdminView):
         """
 
         super().__init__(
-            app=app,
             engine=engine,
             session_maker=session_maker,
             base_url=base_url,
@@ -376,6 +373,77 @@ class Admin(BaseAdminView):
             templates_dir=templates_dir,
             middlewares=middlewares,
             authentication_backend=authentication_backend,
+        )
+
+    def on_app_init(self, app_config: AppConfig) -> AppConfig:
+        """Hook to modify the app config before starting the app."""
+        route_handlers = [
+            HTTPRouteHandler(
+                "/",
+                name="admin:index",
+                media_type=MediaType.HTML,
+                http_method="GET",
+            )(index),
+            HTTPRouteHandler(
+                "/{identity:str}/list",
+                name="admin:list",
+                media_type=MediaType.HTML,
+                http_method="GET",
+            )(list),
+            HTTPRouteHandler(
+                "/{identity:str}/details/{pk:str}",
+                name="admin:details",
+                http_method="GET",
+            )(details),
+            HTTPRouteHandler(
+                "/{identity:str}/delete",
+                name="admin:delete",
+                status_code=200,
+                media_type="text/plain",
+                http_method="DELETE",
+            )(delete),
+            HTTPRouteHandler(
+                "/{identity:str}/create",
+                name="admin:create",
+                http_method=["GET", "POST"],
+            )(create),
+            HTTPRouteHandler(
+                "/{identity:str}/edit/{pk:str}",
+                name="admin:edit",
+                http_method=["GET", "POST"],
+            )(edit),
+            HTTPRouteHandler(
+                "/{identity:str}/export/{export_type:str}",
+                name="admin:export",
+                http_method="GET",
+            )(export),
+            HTTPRouteHandler(
+                "/{identity:str}/ajax/lookup",
+                name="admin:ajax_lookup",
+                http_method="GET",
+            )(ajax_lookup),
+            HTTPRouteHandler(
+                "/login",
+                name="admin:login",
+                http_method=["GET", "POST"],
+            )(login),
+            HTTPRouteHandler(
+                "/logout",
+                name="admin:logout",
+                http_method="GET",
+            )(logout),
+        ]
+
+        app_config.dependencies["sqladmin"] = Provide(lambda: self, sync_to_thread=False)
+        app_config.route_handlers.extend(
+            [
+                Router(self.base_url, route_handlers=route_handlers, exception_handlers={}, middleware=self.middlewares),
+                create_static_files_router(
+                    path="admin/statics",
+                    name="admin:statics",
+                    directories=[os.path.join(os.path.dirname(__file__), "statics")]
+                )
+            ]
         )
 
         def http_exception(request: Request, exc: Exception) -> Response:
@@ -391,112 +459,16 @@ class Admin(BaseAdminView):
                 status_code=exc.status_code,
             )
 
-        self.admin = Litestar(
-            middleware=self.middlewares,
-            route_handlers=[],
-            debug=True,
-            static_files_config=[
-                StaticFilesConfig(
-                    path="admin/statics",
-                    name="admin:statics",
-                    directories=[os.path.join(os.path.dirname(__file__), "statics")],
-                )
-            ],
-            exception_handlers={HTTPException: http_exception},
-        )
+        app_config.exception_handlers[HTTPException] = http_exception
 
-        route_handlers = [
-            HTTPRouteHandler("/", name="admin:index", http_method="GET")(self.index),
-            HTTPRouteHandler(
-                "/{identity:str}/list",
-                name="admin:list",
-                media_type=MediaType.HTML,
-                http_method="GET",
-            )(self.list),
-            HTTPRouteHandler(
-                "/{identity:str}/details/{pk:str}",
-                name="admin:details",
-                http_method="GET",
-            )(self.details),
-            HTTPRouteHandler(
-                "/{identity:str}/delete",
-                name="admin:delete",
-                status_code=200,
-                media_type="text/plain",
-                http_method="DELETE",
-            )(self.delete),
-            HTTPRouteHandler(
-                "/{identity:str}/create",
-                name="admin:create",
-                http_method=["GET", "POST"],
-            )(self.create),
-            HTTPRouteHandler(
-                "/{identity:str}/edit/{pk:str}",
-                name="admin:edit",
-                http_method=["GET", "POST"],
-            )(self.edit),
-            HTTPRouteHandler(
-                "/{identity:str}/export/{export_type:str}",
-                name="admin:export",
-                http_method="GET",
-            )(self.export),
-            HTTPRouteHandler(
-                "/{identity:str}/ajax/lookup",
-                name="admin:ajax_lookup",
-                http_method="GET",
-            )(self.ajax_lookup),
-            HTTPRouteHandler(
-                "/login",
-                name="admin:login",
-                http_method=["GET", "POST"],
-            )(self.login),
-            HTTPRouteHandler(
-                "/logout",
-                name="admin:logout",
-                http_method="GET",
-            )(self.logout),
-        ]
-
-        for route_handler in route_handlers:
-            self.router.register(route_handler)
-
-        self.admin.register(self.router)
-
-        self.admin.debug = debug
-        self.app.register(
-            asgi(name="Admin", is_mount=True)(self.admin),
-        )
+        return app_config
 
     async def refresh_routers(self) -> None:
         """Index route which can be overridden to create dashboards."""
         self.admin.asgi_router.construct_routing_trie()
 
-    @login_required
-    async def index(self, request: Request) -> Response:
-        """Index route which can be overridden to create dashboards."""
-
-        return self.templates.TemplateResponse(request=request, name="index.html")
-
-    @login_required
-    async def list(self, request: Request) -> Response:
-        """List route to display paginated Model instances."""
-
-        await self._list(request)
-
-        model_view: ModelView = self._find_model_view(request.path_params["identity"])
-        pagination = await model_view.list(request)
-        pagination.add_pagination_urls(request.url)
-        list_values = await self.get_list_values(model_view, pagination.rows)
-        context = {
-            "model_view": model_view,
-            "pagination": pagination,
-            "list_values": list_values,
-        }
-        return self.templates.TemplateResponse(
-            name=model_view.list_template, request=request, context=context
-        )
-
     async def get_list_values(self, model_view: ModelView, rows):
+
         values = defaultdict(dict)
         for model in rows:
             for name in model_view._list_prop_names:
@@ -510,226 +482,6 @@ class Admin(BaseAdminView):
             value, formatted_value = await model_view.get_detail_value(model, name)
             values[model][name] = (value, formatted_value)
         return values
-
-    @login_required
-    async def details(self, request: Request) -> Response:
-        """Details route."""
-
-        await self._details(request)
-
-        model_view: ModelView = self._find_model_view(request.path_params["identity"])
-
-        model = await model_view.get_object_for_details(request.path_params["pk"])
-        if not model:
-            raise HTTPException(status_code=404)
-        detail_values = await self.get_detail_values(model_view, model)
-        context = {
-            "model_view": model_view,
-            "model": model,
-            "title": model_view.name,
-            "detail_values": detail_values,
-        }
-
-        return self.templates.TemplateResponse(
-            name=model_view.details_template, request=request, context=context
-        )
-
-    @login_required
-    async def delete(self, request: Request) -> Response:
-        """Delete route."""
-
-        await self._delete(request)
-
-        identity = request.path_params["identity"]
-        model_view = self._find_model_view(identity)
-
-        params = request.query_params.get("pks", "")
-        pks = params.split(",") if params else []
-        for pk in pks:
-            model = await model_view.get_object_for_delete(pk)
-            if not model:
-                raise HTTPException(status_code=404)
-
-            await model_view.delete_model(request, pk)
-
-        return Response(content=str(request.url_for("admin:list", identity=identity)))
-
-    @login_required
-    async def create(self, request: Request) -> Response:
-        """Create model endpoint."""
-
-        await self._create(request)
-
-        identity = request.path_params["identity"]
-        model_view = self._find_model_view(identity)
-
-        Form = await model_view.scaffold_form()
-        form_data = await self._handle_form_data(request)
-        form = Form(form_data)
-
-        context = {
-            "model_view": model_view,
-            "form": form,
-        }
-
-        if request.method == "GET":
-            return self.templates.TemplateResponse(
-                name=model_view.create_template, request=request, context=context
-            )
-
-        if not form.validate():
-            return self.templates.TemplateResponse(
-                name=model_view.create_template,
-                request=request,
-                context=context,
-                status_code=400,
-            )
-
-        form_data_dict = self._denormalize_wtform_data(form.data, model_view.model)
-        try:
-            obj = await model_view.insert_model(request, form_data_dict)
-        except Exception as e:
-            logger.exception(e)
-            context["error"] = str(e)
-            return self.templates.TemplateResponse(
-                name=model_view.create_template,
-                request=request,
-                context=context,
-                status_code=400,
-            )
-
-        url = self.get_save_redirect_url(
-            request=request,
-            form=form_data,
-            obj=obj,
-            model_view=model_view,
-        )
-        return Redirect(url, status_code=302)
-
-    @login_required
-    async def edit(self, request: Request) -> Response:
-        """Edit model endpoint."""
-
-        await self._edit(request)
-
-        identity = request.path_params["identity"]
-        model_view = self._find_model_view(identity)
-
-        model = await model_view.get_object_for_edit(request.path_params["pk"])
-        if not model:
-            raise HTTPException(status_code=404)
-
-        Form = await model_view.scaffold_form()
-        context = {
-            "obj": model,
-            "model_view": model_view,
-            "form": Form(obj=model, data=self._normalize_wtform_data(model)),
-        }
-
-        if request.method == "GET":
-            return self.templates.TemplateResponse(
-                name=model_view.edit_template, request=request, context=context
-            )
-
-        form_data = await self._handle_form_data(request, model)
-        form = Form(form_data)
-        if not form.validate():
-            context["form"] = form
-            return self.templates.TemplateResponse(
-                name=model_view.edit_template,
-                request=request,
-                context=context,
-                status_code=400,
-            )
-
-        form_data_dict = self._denormalize_wtform_data(form.data, model)
-        try:
-            if model_view.save_as and form_data.get("save") == "Save as new":
-                obj = await model_view.insert_model(request, form_data_dict)
-            else:
-                obj = await model_view.update_model(
-                    request, pk=request.path_params["pk"], data=form_data_dict
-                )
-        except Exception as e:
-            logger.exception(e)
-            context["error"] = str(e)
-            return self.templates.TemplateResponse(
-                name=model_view.edit_template,
-                request=request,
-                context=context,
-                status_code=400,
-            )
-
-        url = self.get_save_redirect_url(
-            request=request,
-            form=form_data,
-            obj=obj,
-            model_view=model_view,
-        )
-        return Redirect(url, status_code=302)
-
-    @login_required
-    async def export(self, request: Request) -> Response:
-        """Export model endpoint."""
-
-        await self._export(request)
-
-        identity = request.path_params["identity"]
-        export_type = request.path_params["export_type"]
-
-        model_view = self._find_model_view(identity)
-        rows = await model_view.get_model_objects(
-            request=request, limit=model_view.export_max_rows
-        )
-        return await model_view.export_data(rows, export_type=export_type)
-
-    async def login(self, request: Request) -> Response:
-        assert self.authentication_backend is not None
-
-        context = {}
-        if request.method == "GET":
-            return self.templates.TemplateResponse(
-                name="login.html",
-                request=request,
-            )
-
-        ok = await self.authentication_backend.login(request)
-        if not ok:
-            context["error"] = "Invalid credentials."
-            return self.templates.TemplateResponse(
-                name="login.html",
-                request=request,
-                context=context,
-                status_code=400,
-            )
-
-        return Redirect(request.url_for("admin:index"), status_code=302)
-
-    async def logout(self, request: Request) -> Response:
-        assert self.authentication_backend is not None
-
-        await self.authentication_backend.logout(request)
-        return Redirect(request.url_for("admin:index"), status_code=302)
-
-    async def ajax_lookup(self, request: Request) -> Response:
-        """Ajax lookup route."""
-
-        identity = request.path_params["identity"]
-        model_view = self._find_model_view(identity)
-
-        name = request.query_params.get("name")
-        term = request.query_params.get("term")
-
-        if not name or not term:
-            raise HTTPException(status_code=400)
-
-        try:
-            loader: QueryAjaxModelLoader = model_view._form_ajax_refs[name]
-        except KeyError:
-            raise HTTPException(status_code=400)
-
-        data = [loader.format(m) for m in await loader.get_list(term)]
-        return Response({"results": data}, media_type=MediaType.JSON)
 
     def get_save_redirect_url(
         self, request: Request, form: FormMultiDict, model_view: ModelView, obj: Any
@@ -873,3 +625,258 @@ def action(
         return login_required(func)
 
     return wrap
+
+
+@login_required
+async def index(sqladmin: Admin, request: Request) -> Response:
+    """Index route which can be overridden to create dashboards."""
+
+    return sqladmin.templates.TemplateResponse(request=request, name="index.html")
+
+
+@login_required
+async def list(sqladmin: Admin, request: Request) -> Response:
+    """List route to display paginated Model instances."""
+
+    await sqladmin._list(request)
+
+    model_view: ModelView = sqladmin._find_model_view(request.path_params["identity"])
+    pagination = await model_view.list(request)
+    pagination.add_pagination_urls(request.url)
+    list_values = await sqladmin.get_list_values(model_view, pagination.rows)
+    context = {
+        "model_view": model_view,
+        "pagination": pagination,
+        "list_values": list_values,
+    }
+    return sqladmin.templates.TemplateResponse(
+        name=model_view.list_template, request=request, context=context
+    )
+
+
+@login_required
+async def details(sqladmin: Admin, request: Request) -> Response:
+    """Details route."""
+
+    await sqladmin._details(request)
+
+    model_view: ModelView = sqladmin._find_model_view(request.path_params["identity"])
+
+    model = await model_view.get_object_for_details(request.path_params["pk"])
+    if not model:
+        raise HTTPException(status_code=404)
+    detail_values = await sqladmin.get_detail_values(model_view, model)
+    context = {
+        "model_view": model_view,
+        "model": model,
+        "title": model_view.name,
+        "detail_values": detail_values,
+    }
+
+    return sqladmin.templates.TemplateResponse(
+        name=model_view.details_template, request=request, context=context
+    )
+
+
+@login_required
+async def delete(sqladmin: Admin, request: Request) -> Response:
+    """Delete route."""
+
+    await sqladmin._delete(request)
+
+    identity = request.path_params["identity"]
+    model_view = sqladmin._find_model_view(identity)
+
+    params = request.query_params.get("pks", "")
+    pks = params.split(",") if params else []
+    for pk in pks:
+        model = await model_view.get_object_for_delete(pk)
+        if not model:
+            raise HTTPException(status_code=404)
+
+        await model_view.delete_model(request, pk)
+
+    return Response(content=str(request.url_for("admin:list", identity=identity)))
+
+
+@login_required
+async def create(sqladmin: Admin, request: Request) -> Response:
+    """Create model endpoint."""
+
+    await sqladmin._create(request)
+
+    identity = request.path_params["identity"]
+    model_view = sqladmin._find_model_view(identity)
+
+    Form = await model_view.scaffold_form()
+    form_data = await sqladmin._handle_form_data(request)
+    form = Form(form_data)
+
+    context = {
+        "model_view": model_view,
+        "form": form,
+    }
+
+    if request.method == "GET":
+        return sqladmin.templates.TemplateResponse(
+            name=model_view.create_template, request=request, context=context
+        )
+
+    if not form.validate():
+        return sqladmin.templates.TemplateResponse(
+            name=model_view.create_template,
+            request=request,
+            context=context,
+            status_code=400,
+        )
+
+    form_data_dict = sqladmin._denormalize_wtform_data(form.data, model_view.model)
+    try:
+        obj = await model_view.insert_model(request, form_data_dict)
+    except Exception as e:
+        logger.exception(e)
+        context["error"] = str(e)
+        return sqladmin.templates.TemplateResponse(
+            name=model_view.create_template,
+            request=request,
+            context=context,
+            status_code=400,
+        )
+
+    url = sqladmin.get_save_redirect_url(
+        request=request,
+        form=form_data,
+        obj=obj,
+        model_view=model_view,
+    )
+    return Redirect(url, status_code=302)
+
+
+@login_required
+async def edit(sqladmin: Admin, request: Request) -> Response:
+    """Edit model endpoint."""
+
+    await sqladmin._edit(request)
+
+    identity = request.path_params["identity"]
+    model_view = sqladmin._find_model_view(identity)
+
+    model = await model_view.get_object_for_edit(request.path_params["pk"])
+    if not model:
+        raise HTTPException(status_code=404)
+
+    Form = await model_view.scaffold_form()
+    context = {
+        "obj": model,
+        "model_view": model_view,
+        "form": Form(obj=model, data=sqladmin._normalize_wtform_data(model)),
+    }
+
+    if request.method == "GET":
+        return sqladmin.templates.TemplateResponse(
+            name=model_view.edit_template, request=request, context=context
+        )
+
+    form_data = await sqladmin._handle_form_data(request, model)
+    form = Form(form_data)
+    if not form.validate():
+        context["form"] = form
+        return sqladmin.templates.TemplateResponse(
+            name=model_view.edit_template,
+            request=request,
+            context=context,
+            status_code=400,
+        )
+
+    form_data_dict = sqladmin._denormalize_wtform_data(form.data, model)
+    try:
+        if model_view.save_as and form_data.get("save") == "Save as new":
+            obj = await model_view.insert_model(request, form_data_dict)
+        else:
+            obj = await model_view.update_model(
+                request, pk=request.path_params["pk"], data=form_data_dict
+            )
+    except Exception as e:
+        logger.exception(e)
+        context["error"] = str(e)
+        return sqladmin.templates.TemplateResponse(
+            name=model_view.edit_template,
+            request=request,
+            context=context,
+            status_code=400,
+        )
+
+    url = sqladmin.get_save_redirect_url(
+        request=request,
+        form=form_data,
+        obj=obj,
+        model_view=model_view,
+    )
+    return Redirect(url, status_code=302)
+
+
+@login_required
+async def export(sqladmin: Admin, request: Request) -> Response:
+    """Export model endpoint."""
+
+    await sqladmin._export(request)
+
+    identity = request.path_params["identity"]
+    export_type = request.path_params["export_type"]
+
+    model_view = sqladmin._find_model_view(identity)
+    rows = await model_view.get_model_objects(
+        request=request, limit=model_view.export_max_rows
+    )
+    return await model_view.export_data(rows, export_type=export_type)
+
+
+async def login(sqladmin: Admin, request: Request) -> Response:
+    assert sqladmin.authentication_backend is not None
+
+    context = {}
+    if request.method == "GET":
+        return sqladmin.templates.TemplateResponse(
+            name="login.html",
+            request=request,
+        )
+
+    ok = await sqladmin.authentication_backend.login(request)
+    if not ok:
+        context["error"] = "Invalid credentials."
+        return sqladmin.templates.TemplateResponse(
+            name="login.html",
+            request=request,
+            context=context,
+            status_code=400,
+        )
+
+    return Redirect(request.url_for("admin:index"), status_code=302)
+
+
+async def logout(sqladmin: Admin, request: Request) -> Response:
+    assert sqladmin.authentication_backend is not None
+
+    await sqladmin.authentication_backend.logout(request)
+    return Redirect(request.url_for("admin:index"), status_code=302)
+
+
+async def ajax_lookup(sqladmin: Admin, request: Request) -> Response:
+    """Ajax lookup route."""
+
+    identity = request.path_params["identity"]
+    model_view = sqladmin._find_model_view(identity)
+
+    name = request.query_params.get("name")
+    term = request.query_params.get("term")
+
+    if not name or not term:
+        raise HTTPException(status_code=400)
+
+    try:
+        loader: QueryAjaxModelLoader = model_view._form_ajax_refs[name]
+    except KeyError:
+        raise HTTPException(status_code=400)
+
+    data = [loader.format(m) for m in await loader.get_list(term)]
+    return Response({"results": data}, media_type=MediaType.JSON)

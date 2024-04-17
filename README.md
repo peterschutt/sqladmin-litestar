@@ -76,6 +76,7 @@ $ pip install "sqladmin-litestar[full]"
 Let's define an example SQLAlchemy model:
 
 ```python
+# db.py
 from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base
 
@@ -100,12 +101,14 @@ Base.metadata.create_all(engine)  # Create tables
 If you want to use `SQLAdmin` with `Litestar`:
 
 ```python
+# app.py
 from litestar import Litestar
 from sqladmin import Admin, ModelView
 
+from db import User, engine
 
-app = Litestar()
-admin = Admin(app, engine)
+
+admin = Admin(engine)
 
 
 class UserAdmin(ModelView, model=User):
@@ -113,6 +116,8 @@ class UserAdmin(ModelView, model=User):
 
 
 admin.add_view(UserAdmin)
+
+app = Litestar(plugins=[admin], debug=True)
 ```
 
 Now visiting `/admin` on your browser you can see the `SQLAdmin` interface.

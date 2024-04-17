@@ -18,7 +18,7 @@ class Jinja2Templates:
         @jinja2.pass_context
         def url_for_static_asset(context: Dict, __name: str, **path_params: Any) -> str:
             request: Request = context["request"]
-            return request.url_for_static_asset(__name, **path_params)
+            return request.url_for(__name, **path_params)
 
         loader = jinja2.FileSystemLoader(directory)
         self.env = jinja2.Environment(loader=loader, autoescape=True)
