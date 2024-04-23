@@ -82,6 +82,9 @@ class BaseAdmin:
         middlewares: Optional[Sequence[DefineMiddleware]] = None,
         authentication_backend: Optional[AuthenticationBackend] = None,
     ) -> None:
+
+        from builtins import list as blist
+
         self.engine = engine
         self.base_url = base_url
         self.templates_dir = templates_dir
@@ -100,9 +103,10 @@ class BaseAdmin:
         self.is_async = is_async_session_maker(self.session_maker)
 
         self.middlewares = middlewares or []
+
         self.authentication_backend = authentication_backend
         if authentication_backend:
-            self.middlewares = list(self.middlewares)
+            self.middlewares = blist(self.middlewares)
             self.middlewares.extend(authentication_backend.middlewares)
 
         self.templates = self.init_templating_engine()
@@ -111,6 +115,9 @@ class BaseAdmin:
         self._menu = Menu()
 
     def init_templating_engine(self) -> Jinja2Templates:
+
+        from builtins import list as blist
+
         templates = Jinja2Templates("templates")
         loaders = [
             FileSystemLoader(self.templates_dir),
@@ -121,7 +128,10 @@ class BaseAdmin:
         templates.env.globals["min"] = min
         templates.env.globals["zip"] = zip
         templates.env.globals["admin"] = self
-        templates.env.globals["is_list"] = lambda x: isinstance(x, list)
+        try:
+            templates.env.globals["is_list"] = lambda x: isinstance(x, blist)
+        except Exception as e:
+            print(f"Exception {str(e)}")
         templates.env.globals["get_object_identifier"] = get_object_identifier
 
         return templates
@@ -191,14 +201,14 @@ class BaseAdmin:
                     func, "_label"
                 )
             if getattr(func, "_add_in_detail"):
-                view_instance._custom_actions_in_detail[
-                    getattr(func, "_slug")
-                ] = getattr(func, "_label")
+                view_instance._custom_actions_in_detail[getattr(func, "_slug")] = (
+                    getattr(func, "_label")
+                )
 
             if getattr(func, "_confirmation_message"):
-                view_instance._custom_actions_confirmation[
-                    getattr(func, "_slug")
-                ] = getattr(func, "_confirmation_message")
+                view_instance._custom_actions_confirmation[getattr(func, "_slug")] = (
+                    getattr(func, "_confirmation_message")
+                )
 
     def _handle_expose_decorated_func(
         self,
@@ -434,15 +444,22 @@ class Admin(BaseAdminView, InitPluginProtocol):
             )(logout),
         ]
 
-        app_config.dependencies["sqladmin"] = Provide(lambda: self, sync_to_thread=False)
+        app_config.dependencies["sqladmin"] = Provide(
+            lambda: self, sync_to_thread=False
+        )
         app_config.route_handlers.extend(
             [
-                Router(self.base_url, route_handlers=route_handlers, exception_handlers={}, middleware=self.middlewares),
+                Router(
+                    self.base_url,
+                    route_handlers=route_handlers,
+                    exception_handlers={},
+                    middleware=self.middlewares,
+                ),
                 create_static_files_router(
                     path="admin/statics",
                     name="admin:statics",
-                    directories=[os.path.join(os.path.dirname(__file__), "statics")]
-                )
+                    directories=[os.path.join(os.path.dirname(__file__), "statics")],
+                ),
             ]
         )
 
@@ -869,8 +886,19 @@ async def ajax_lookup(sqladmin: Admin, request: Request) -> Response:
 
     name = request.query_params.get("name")
     term = request.query_params.get("term")
+    extra_params = request.query_params.copy()
 
-    if not name or not term:
+    try:
+        del extra_params["name"]
+    except Exception:
+        ...
+
+    try:
+        del extra_params["term"]
+    except Exception:
+        ...
+
+    if not name:
         raise HTTPException(status_code=400)
 
     try:
@@ -878,5 +906,12 @@ async def ajax_lookup(sqladmin: Admin, request: Request) -> Response:
     except KeyError:
         raise HTTPException(status_code=400)
 
-    data = [loader.format(m) for m in await loader.get_list(term)]
+    if extra_params:
+        search = {"term": term}
+        search.update(extra_params)
+        print(f"====> search {search}")
+    else:
+        search = term
+
+    data = [loader.format(m) for m in await loader.get_list(search)]
     return Response({"results": data}, media_type=MediaType.JSON)
