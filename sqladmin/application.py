@@ -33,11 +33,10 @@ from litestar.handlers import HTTPRouteHandler
 from litestar.middleware import DefineMiddleware
 from litestar.plugins import InitPluginProtocol
 from litestar.response import Redirect, Response
-from litestar.static_files import StaticFilesConfig, create_static_files_router
+from litestar.static_files import create_static_files_router
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, sessionmaker
-from typing_extensions import Self
 
 from sqladmin._menu import CategoryMenu, Menu, ViewMenu
 from sqladmin._types import ENGINE_TYPE
@@ -102,7 +101,7 @@ class BaseAdmin:
         self.middlewares = middlewares or []
         self.authentication_backend = authentication_backend
         if authentication_backend:
-            self.middlewares = list(self.middlewares)
+            self.middlewares = list_view(self.middlewares)
             self.middlewares.extend(authentication_backend.middlewares)
 
         self.templates = self.init_templating_engine()
@@ -191,14 +190,14 @@ class BaseAdmin:
                     func, "_label"
                 )
             if getattr(func, "_add_in_detail"):
-                view_instance._custom_actions_in_detail[
-                    getattr(func, "_slug")
-                ] = getattr(func, "_label")
+                view_instance._custom_actions_in_detail[getattr(func, "_slug")] = (
+                    getattr(func, "_label")
+                )
 
             if getattr(func, "_confirmation_message"):
-                view_instance._custom_actions_confirmation[
-                    getattr(func, "_slug")
-                ] = getattr(func, "_confirmation_message")
+                view_instance._custom_actions_confirmation[getattr(func, "_slug")] = (
+                    getattr(func, "_confirmation_message")
+                )
 
     def _handle_expose_decorated_func(
         self,
@@ -389,7 +388,7 @@ class Admin(BaseAdminView, InitPluginProtocol):
                 name="admin:list",
                 media_type=MediaType.HTML,
                 http_method="GET",
-            )(list),
+            )(list_view),
             HTTPRouteHandler(
                 "/{identity:str}/details/{pk:str}",
                 name="admin:details",
@@ -434,15 +433,22 @@ class Admin(BaseAdminView, InitPluginProtocol):
             )(logout),
         ]
 
-        app_config.dependencies["sqladmin"] = Provide(lambda: self, sync_to_thread=False)
+        app_config.dependencies["sqladmin"] = Provide(
+            lambda: self, sync_to_thread=False
+        )
         app_config.route_handlers.extend(
             [
-                Router(self.base_url, route_handlers=route_handlers, exception_handlers={}, middleware=self.middlewares),
+                Router(
+                    self.base_url,
+                    route_handlers=route_handlers,
+                    exception_handlers={},
+                    middleware=self.middlewares,
+                ),
                 create_static_files_router(
                     path="admin/statics",
                     name="admin:statics",
-                    directories=[os.path.join(os.path.dirname(__file__), "statics")]
-                )
+                    directories=[os.path.join(os.path.dirname(__file__), "statics")],
+                ),
             ]
         )
 
@@ -468,7 +474,6 @@ class Admin(BaseAdminView, InitPluginProtocol):
         self.admin.asgi_router.construct_routing_trie()
 
     async def get_list_values(self, model_view: ModelView, rows):
-
         values = defaultdict(dict)
         for model in rows:
             for name in model_view._list_prop_names:
@@ -635,7 +640,7 @@ async def index(sqladmin: Admin, request: Request) -> Response:
 
 
 @login_required
-async def list(sqladmin: Admin, request: Request) -> Response:
+async def list_view(sqladmin: Admin, request: Request) -> Response:
     """List route to display paginated Model instances."""
 
     await sqladmin._list(request)
